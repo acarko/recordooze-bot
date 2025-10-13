@@ -526,3 +526,15 @@ client.on('interactionCreate', async (interaction) => {
 
 /* -------------------- Login -------------------- */
 client.login(process.env.DISCORD_TOKEN);
+
+import express from "express";
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("✅ Recordooze Bot aktif ve çalışıyor!");
+});
+
+app.listen(3000, () => {
+  console.log("🌐 Web sunucusu ayakta, Render portuna bağlandı!");
+});
+
