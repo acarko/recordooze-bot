@@ -4,8 +4,14 @@
   "description": "Stüdyo programı paylaşım botu (ANSI renkli format)",
   "main": "index.js",
   "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
