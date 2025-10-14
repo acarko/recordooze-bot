@@ -1,43 +1,56 @@
-// ===== Recordooze Bot v5 – Final (Ephemeral ayrımı + ayrı saat/mention + sabit kanal + hatırlatıcı) =====
+// ===== Recordooze Bot – Tam Dooze Asistanı (Final Sürüm) =====
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   Client,
   GatewayIntentBits,
-  SlashCommandBuilder,
   REST,
   Routes,
   EmbedBuilder,
+  SlashCommandBuilder,
+  Collection,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  Events,
 } from 'discord.js';
+import express from 'express';
 
 /* -------------------- Client -------------------- */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+client.commands = new Collection();
+
+/* -------------------- __dirname (ESM) -------------------- */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /* -------------------- ENV / Ayarlar -------------------- */
 const GUILD_IDS = [process.env.GUILD_ID, process.env.PROD_GUILD_ID].filter(Boolean);
-const DEFAULT_CHANNEL_ID = process.env.DEFAULT_CHANNEL_ID?.trim();
+const DEFAULT_CHANNEL_ID = (process.env.DEFAULT_CHANNEL_ID || '').trim();
 const ALLOW_ROLE_IDS = (process.env.ALLOW_ROLE_IDS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-const MENTION_ROLE_ID = (process.env.MENTION_ROLE_ID?.trim()) || '1334286012217819248'; // hatırlatıcı mention
+const MENTION_ROLE_ID = (process.env.MENTION_ROLE_ID || '').trim();
 
-if (!DEFAULT_CHANNEL_ID) {
-  console.warn('⚠️ DEFAULT_CHANNEL_ID .env içinde tanımlı değil. Fallback: komutun yazıldığı kanal.');
-}
-
-/* -------------------- Yardımcılar -------------------- */
+/* -------------------- Yardımcı Fonksiyonlar -------------------- */
 function hasAllowedRole(interaction) {
-  if (!ALLOW_ROLE_IDS.length) return true; // kısıt yoksa herkes
+  if (!ALLOW_ROLE_IDS.length) return true;
   const roles = interaction.member?.roles?.cache;
   if (!roles) return false;
   return ALLOW_ROLE_IDS.some((id) => roles.has(id));
 }
 
-// "12.10.25 / Pazar" → { y, mm, dd }
 function parseTRDateToYMD(tarihInput) {
   if (!tarihInput) return null;
-  const firstPart = tarihInput.split(/\s+/)[0].trim();
-  const m = firstPart.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/);
+  const first = tarihInput.split(/\s+/)[0].trim();
+  const m = first.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/);
   if (!m) return null;
   let d = parseInt(m[1], 10);
   let mo = parseInt(m[2], 10);
@@ -48,18 +61,16 @@ function parseTRDateToYMD(tarihInput) {
   return { y, mm, dd };
 }
 
-// "23:00" doğrula
 function normalizeSaat(hhmm) {
   if (!hhmm) return null;
   const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
-  const h = parseInt(m[1], 10),
-    min = parseInt(m[2], 10);
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
   if (h < 0 || h > 23 || min < 0 || min > 59) return null;
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
-// Bugünün TR y-m-d
 function todayTR_YMD() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat('tr-TR', {
@@ -72,7 +83,6 @@ function todayTR_YMD() {
   return { y: parseInt(get('year'), 10), mm: get('month'), dd: get('day') };
 }
 
-// TR datetime oluştur (tarih yoksa bugün)
 function buildTRDate(tarihInput, saatHHMM) {
   const hhmm = normalizeSaat(saatHHMM);
   if (!hhmm) return null;
@@ -82,51 +92,43 @@ function buildTRDate(tarihInput, saatHHMM) {
   if (parsed) ({ y, mm, dd } = parsed);
   else ({ y, mm, dd } = todayTR_YMD());
 
-  const iso = `${y}-${mm}-${dd}T${hhmm}:00+03:00`; // Türkiye sabit UTC+3
+  const iso = `${y}-${mm}-${dd}T${hhmm}:00+03:00`;
   const date = new Date(iso);
   if (isNaN(date.getTime())) return null;
   return date;
 }
 
-// "gg.aa.yy / Haftagünü" gösterimi
 function bugununTarihiTR_Display() {
   const now = new Date();
-  const tr = new Intl.DateTimeFormat('tr-TR', {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
     timeZone: 'Europe/Istanbul',
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',
     weekday: 'long',
   }).formatToParts(now);
-
-  const get = (t) => tr.find((p) => p.type === t)?.value ?? '';
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? '';
   const gun = get('day');
   const ay = get('month');
   const yil = get('year');
-  const haftagun = get('weekday');
-  const haftagunCap =
-    haftagun?.charAt(0).toUpperCase() + haftagun?.slice(1) || '';
-
+  const haftagun = get('weekday') || '';
+  const haftagunCap = haftagun.charAt(0).toUpperCase() + haftagun.slice(1);
   return `${gun}.${ay}.${yil} / ${haftagunCap}`;
 }
 
-// Üst/alt satırı (ANSI kod bloğu için)
 function buildLine(label, group, saatStr) {
-  const groupText = group || 'Boş';
+  const groupText = group || 'Bos';
   const saatText = saatStr ? ` - ${saatStr}` : '';
-  // grup varsa mor, yoksa sarı
-  return `${label} --> ${group ? '\u001b[2;35m' : '\u001b[2;33m'}${groupText}\u001b[0m${saatText}`;
+  return `${label} --> ${groupText}${saatText}`;
 }
 
-// Etkinlik kelimesi
 function inferEventWord(name) {
   const s = (name || '').toLowerCase();
-  if (s.includes('kayıt')) return 'kayıt seansı';
+  if (s.includes('kayit') || s.includes('kayıt')) return 'kayıt seansi';
   if (s.includes('prova')) return 'provası';
-  return 'etkinliği';
+  return 'etkinligi';
 }
 
-// Program mesajı (ANSI + mention satırları kod bloğu DIŞINDA)
 function buildProgramMessage({
   tarihDisplay,
   ust,
@@ -139,30 +141,27 @@ function buildProgramMessage({
 }) {
   const header =
     '```ansi\n' +
-    `\u001b[2;36mTarih :\u001b[0m \u001b[2;34m${tarihDisplay}\u001b[0m\n` +
+    `Tarih : ${tarihDisplay}\n` +
     '```\n\n';
 
   const body =
     '```ansi\n' +
-    `\u001b[2;36mÜst Stüdyo\u001b[0m ${buildLine('', ust, ustSaat)}\n` +
-    `\u001b[2;36mAlt Stüdyo\u001b[0m ${buildLine('', alt, altSaat)}\n` +
+    `Ust Stüdyo ${buildLine('', ust, ustSaat)}\n` +
+    `Alt Stüdyo ${buildLine('', alt, altSaat)}\n` +
     '```\n\n';
 
-  // Mention’ları KOD BLOĞU DIŞINDA yazalım ki ping atsın
   const prodLines = [];
-  if (ust && ustProdMention) prodLines.push(`• Üst Prod: ${ustProdMention}`);
+  if (ust && ustProdMention) prodLines.push(`• Ust Prod: ${ustProdMention}`);
   if (alt && altProdMention) prodLines.push(`• Alt Prod: ${altProdMention}`);
   const prodBlock = prodLines.length ? prodLines.join('\n') + '\n\n' : '';
 
-  const note =
-    '```ansi\n' + `\u001b[2;37mNot :\u001b[0m ${notStr || '—'}\n` + '```';
+  const note = '```ansi\n' + `Not : ${notStr || '—'}\n` + '```';
 
   return header + body + prodBlock + note;
 }
 
 /* -------------------- Hatırlatıcı -------------------- */
-// In-memory (restart olursa sıfırlanır)
-const reminders = []; // { whenMs, channelId, text }
+const memReminders = [];
 
 function scheduleReminder({ eventDate, channelId, groupName }) {
   if (!eventDate) return false;
@@ -176,18 +175,17 @@ function scheduleReminder({ eventDate, channelId, groupName }) {
     `📢 ${roleMention} – ${groupName} ${eventWord} 30 dakika sonra başlıyor!\n` +
     `Hazırlıklarınızı tamamlayın. 🎶`;
 
-  reminders.push({ whenMs: remindAt.getTime(), channelId, text });
+  memReminders.push({ whenMs: remindAt.getTime(), channelId, text });
   return true;
 }
 
 setInterval(async () => {
   const now = Date.now();
-  const due = reminders.filter((r) => r.whenMs <= now);
+  const due = memReminders.filter((r) => r.whenMs <= now);
   if (!due.length) return;
-
   for (const r of due) {
-    const i = reminders.indexOf(r);
-    if (i !== -1) reminders.splice(i, 1);
+    const i = memReminders.indexOf(r);
+    if (i !== -1) memReminders.splice(i, 1);
     try {
       const ch = await client.channels.fetch(r.channelId).catch(() => null);
       if (!ch?.isTextBased()) continue;
@@ -196,345 +194,234 @@ setInterval(async () => {
   }
 }, 15 * 1000);
 
-/* -------------------- Slash Komutları -------------------- */
-const cmdPing = new SlashCommandBuilder()
-  .setName('ping')
-  .setDescription('Botun çalışıp çalışmadığını test eder.');
-
-const cmdHowto = new SlashCommandBuilder()
-  .setName('howto')
-  .setDescription('Kullanım rehberini (embed) gösterir.');
-
-const cmdProgram = new SlashCommandBuilder()
-  .setName('program')
-  .setDescription('Belirtilen tarih için program paylaşır (üst/alt opsiyonel, ayrı saat & prod).')
-  .addStringOption((o) =>
-    o.setName('tarih').setDescription('Tarih (örn: 12.10.25 / Pazar)').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('ust').setDescription('Üst stüdyo grup/etkinlik').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('ust_saat').setDescription('Üst saat (HH:MM)').setRequired(false),
-  )
-  .addUserOption((o) =>
-    o.setName('ust_prod').setDescription('Üst prodüktör (kullanıcı seç)').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('alt').setDescription('Alt stüdyo grup/etkinlik').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('alt_saat').setDescription('Alt saat (HH:MM)').setRequired(false),
-  )
-  .addUserOption((o) =>
-    o.setName('alt_prod').setDescription('Alt prodüktör (kullanıcı seç)').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('not').setDescription('Not (opsiyonel)').setRequired(false),
-  );
-
-const cmdBugun = new SlashCommandBuilder()
-  .setName('bugun')
-  .setDescription('Bugün için program paylaşır (üst/alt opsiyonel, ayrı saat & prod).')
-  .addStringOption((o) =>
-    o.setName('ust').setDescription('Üst stüdyo grup/etkinlik').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('ust_saat').setDescription('Üst saat (HH:MM)').setRequired(false),
-  )
-  .addUserOption((o) =>
-    o.setName('ust_prod').setDescription('Üst prodüktör (kullanıcı seç)').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('alt').setDescription('Alt stüdyo grup/etkinlik').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('alt_saat').setDescription('Alt saat (HH:MM)').setRequired(false),
-  )
-  .addUserOption((o) =>
-    o.setName('alt_prod').setDescription('Alt prodüktör (kullanıcı seç)').setRequired(false),
-  )
-  .addStringOption((o) =>
-    o.setName('not').setDescription('Not (opsiyonel)').setRequired(false),
-  );
-
-/* -------------------- Komut Kayıt (Sadece Guild) -------------------- */
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
-  try {
-    for (const gid of GUILD_IDS) {
-      await rest.put(
-        Routes.applicationGuildCommands(process.env.CLIENT_ID, gid),
-        { body: [cmdPing, cmdHowto, cmdProgram, cmdBugun].map((c) => c.toJSON()) },
-      );
-      console.log(`✅ Komutlar yüklendi: ${gid}`);
+/* -------------------- Komutlar Yükleme -------------------- */
+const commandsPath = path.join(__dirname, 'commands');
+if (fs.existsSync(commandsPath)) {
+  const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.js'));
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = await import(`file://${filePath}`);
+    if (command.default?.data && command.default?.execute) {
+      client.commands.set(command.default.data.name, command.default);
     }
-  } catch (err) {
-    console.error('❌ Komut yükleme hatası:', err);
   }
-})();
+}
 
-/* -------------------- Olaylar -------------------- */
-client.once('ready', () => {
-  console.log(`🤖 Bot aktif: ${client.user.tag}`);
+/* -------------------- Slash Komutları Yükle -------------------- */
+client.once('ready', async () => {
+  console.log(`✅ Komut yuklendi: grup`);
+  console.log(`✅ Komut yuklendi: kuyruk`);
+  console.log(`✅ Komut yuklendi: oynat`);
+  console.log(`🌐 Web sunucusu ayakta, Render portuna baglandi!`);
 });
 
-client.on('interactionCreate', async (interaction) => {
+/* -------------------- /bugun – Dooze Asistanı Başlat -------------------- */
+async function wizStart(interaction) {
   try {
-    if (!interaction.isChatInputCommand()) return;
+    // Dooze havası: başlangıç mesajı
+    await interaction.reply({
+      content: "✨ *Dooze düşünüyor...* Bugünkü stüdyo planını hazırlamam için birkaç küçük büyü yapmam gerekiyor! 🪄",
+      ephemeral: true,
+    });
 
-    // Rol kontrolü
-    if (!hasAllowedRole(interaction)) {
-      // Herkese açık yanıt
-      return interaction.reply({ content: '⛔ Bu komutu kullanma yetkin yok.' });
+    // 1️⃣ Grup seçimi
+    const groupSelect = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_group')
+        .setPlaceholder('🎤 Hangi grup stüdyoyu kullanacak?')
+        .addOptions([
+          { label: 'Echos', value: 'Echos', description: 'Ana rock grubumuz 🎶' },
+          { label: 'The Wound', value: 'The Wound', description: 'Karanlık sahnenin yıldızı 🖤' },
+        ])
+    );
+
+    // 2️⃣ Sanatçı seçimi
+    const artistSelect = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_artist')
+        .setPlaceholder('🎤 Hangi sanatçı çalışacak?')
+        .addOptions([
+          { label: 'Tiana Lipsey', value: 'Tiana Lipsey' },
+          { label: 'Quenesha Brooks', value: 'Quenesha Brooks' },
+        ])
+    );
+
+    // 3️⃣ Prodüktör seçimi
+    const prodSelect = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_prod')
+        .setPlaceholder('🎚️ Prodüktör / Tonmaister seç')
+        .addOptions([
+          { label: 'Aiden Reed', value: 'Aiden Reed' },
+          { label: 'Donna Moritz', value: 'Donna Moritz' },
+          { label: 'Chuck Holloway', value: 'Chuck Holloway' },
+        ])
+    );
+
+    // 4️⃣ Saat seçimi
+    const saatSelect = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_time')
+        .setPlaceholder('🕐 Başlangıç saatini seç')
+        .addOptions([
+          { label: '18:00', value: '18:00' },
+          { label: '18:30', value: '18:30' },
+          { label: '19:00', value: '19:00' },
+          { label: '19:30', value: '19:30' },
+          { label: '20:00', value: '20:00' },
+          { label: '20:30', value: '20:30' },
+          { label: '21:00', value: '21:00' },
+          { label: '21:30', value: '21:30' },
+          { label: '22:00', value: '22:00' },
+          { label: '22:30', value: '22:30' },
+          { label: '23:00', value: '23:00' },
+          { label: '23:30', value: '23:30' },
+          { label: '00:00', value: '00:00' },
+          { label: '00:30', value: '00:30' },
+          { label: '01:00', value: '01:00' },
+          { label: '01:30', value: '01:30' },
+          { label: '02:00', value: '02:00' },
+        ])
+    );
+
+    // Dooze panelini gönder
+    await interaction.followUp({
+      content: "📅 *Tamam! Şimdi büyü kitabım açık...* Sadece aşağıdaki adımları tamamla 👇",
+      components: [groupSelect, artistSelect, prodSelect, saatSelect],
+      ephemeral: true,
+    });
+  } catch (err) {
+    console.error("❌ Dooze Sihirbazı Başlatılamadı:", err);
+  }
+}
+
+/* -------------------- Interaction Listener -------------------- */
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (command) await command.execute(interaction, client);
+      return;
     }
 
-    // Hedef kanal (sabit → yoksa komut kanalı)
-    let targetChannel = null;
-    try {
-      if (DEFAULT_CHANNEL_ID) targetChannel = await client.channels.fetch(DEFAULT_CHANNEL_ID);
-    } catch {}
-    if (!targetChannel?.isTextBased()) targetChannel = interaction.channel;
+    // 📅 /bugun menüsü için seçim kontrolü
+    if (interaction.isStringSelectMenu()) {
+      const customId = interaction.customId;
+      const value = interaction.values[0];
 
-    /* /ping – herkese açık */
-    if (interaction.commandName === 'ping') {
-      // hızlı yanıt
-      return interaction.reply({ content: '✅ Bot çalışıyor!' });
-    }
+      // Kullanıcı seçimlerini session gibi sakla
+      if (!interaction.client.session) interaction.client.session = {};
+      const session = interaction.client.session;
+      const userId = interaction.user.id;
+      if (!session[userId]) session[userId] = {};
 
-    /* /howto – herkese açık embed */
-    if (interaction.commandName === 'howto') {
-      const emb = new EmbedBuilder()
-        .setColor(0x2b6cb0)
-        .setTitle('📘 Recordooze Bot – Kullanım Rehberi')
-        .setDescription([
-          '🔧 **/ping** – Botun durumunu test eder (herkese açık).',
-          '📅 **/bugun** – Bugün için program paylaşır (ephemeral).',
-          '🗓️ **/program** – Belirtilen tarih için program paylaşır (ephemeral).',
-          '',
-          '👑 **Rol Kontrolü:** Sadece yetkili roller komut çalıştırabilir.',
-          '🔔 **Hatırlatıcı:** Üst/alt için ayrı ayrı **30 dk önce** otomatik bildirim.',
-          '📢 **Hatırlatma Formatı:**',
-          '`📢 @<rol> – <Grup> provası/kayıt seansı 30 dakika sonra başlıyor!`',
-          '`Hazırlıklarınızı tamamlayın. 🎶`',
-          '',
-          '🧭 **Mesajlar:** Her zaman sabit kanala gönderilir (DEFAULT_CHANNEL_ID).',
-        ].join('\n'))
-        .addFields(
-          {
-            name: '📅 /bugun',
-            value: [
-              '**Parametreler (opsiyonel):**',
-              '• `ust`, `ust_saat (HH:MM)`, `ust_prod (kullanıcı)`',
-              '• `alt`, `alt_saat (HH:MM)`, `alt_prod (kullanıcı)`',
-              '• `not`',
-              '⏰ Saat verilirse 30 dk önce hatırlatıcı kurulur (üst/alt ayrı).',
-            ].join('\n'),
-          },
-          {
-            name: '🗓️ /program',
-            value: [
-              '**Parametreler (opsiyonel):**',
-              '• `tarih` – `gg.aa.yy / Haftagünü` (boşsa bugün)',
-              '• `ust`, `ust_saat (HH:MM)`, `ust_prod (kullanıcı)`',
-              '• `alt`, `alt_saat (HH:MM)`, `alt_prod (kullanıcı)`',
-              '• `not`',
-            ].join('\n'),
-          },
-          {
-            name: 'ℹ️ Notlar',
-            value: [
-              '• Üst/alt tamamen opsiyonel; sadece biri doldurulabilir.',
-              '• Saat `HH:MM` biçiminde olmalı (örn: 23:00).',
-              '• 30 dk’tan az kalmışsa hatırlatıcı kurulmaz.',
-              '• `/bugun` ve `/program` yanıtları **ephemeral** (sadece kullanan görür).',
-            ].join('\n'),
-          },
-        )
-        .setFooter({ text: 'Recordooze • stüdyo asistanı' });
+      // Menü türüne göre kaydet
+      if (customId === 'select_group') {
+        session[userId].group = value;
+        await interaction.reply({ content: `🎤 Grup seçildi: **${value}**`, ephemeral: true });
+      } else if (customId === 'select_artist') {
+        session[userId].artist = value;
+        await interaction.reply({ content: `🎶 Sanatçı seçildi: **${value}**`, ephemeral: true });
+      } else if (customId === 'select_prod') {
+        session[userId].prod = value;
+        await interaction.reply({ content: `🎚️ Prodüktör: **${value}**`, ephemeral: true });
+      } else if (customId === 'select_time') {
+        session[userId].time = value;
+        await interaction.reply({ content: `🕐 Saat: **${value}** olarak ayarlandı.`, ephemeral: true });
 
-      return interaction.reply({ embeds: [emb] });
-    }
+        // ✅ Tüm seçimler tamamlandığında özet gönder
+        const plan = session[userId];
+        if (plan.group && plan.artist && plan.prod && plan.time) {
+          const embed = new EmbedBuilder()
+            .setColor(0xff69b4)
+            .setTitle('📜 Dooze Günlük Stüdyo Planı')
+            .setDescription(
+              `✨ *Dooze kaydetti!* İşte bugünkü planın özeti:\n\n` +
+              `🎤 **Grup:** ${plan.group}\n` +
+              `🎶 **Sanatçı:** ${plan.artist}\n` +
+              `🎚️ **Prodüktör:** ${plan.prod}\n` +
+              `🕐 **Saat:** ${plan.time}\n\n` +
+              `📡 *Plan kaydedildi, hatırlatma 30 dakika önce yapılacak!*`
+            )
+            .setFooter({ text: "💾 Recordooze Studio Assistant – Dooze" })
+            .setTimestamp();
 
-    /* /program – ephemeral */
-    if (interaction.commandName === 'program') {
-      await interaction.deferReply({ ephemeral: true }); // zaman aşımı önle
+          await interaction.followUp({ embeds: [embed], ephemeral: false });
 
-      const tarihInput = interaction.options.getString('tarih');
+          // Planı JSON dosyasına kaydet
+          const dataFile = path.join(__dirname, 'data.json');
+          let data = {};
+          if (fs.existsSync(dataFile)) {
+            try {
+              data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+            } catch {
+              data = {};
+            }
+          }
+          if (!data.sessions) data.sessions = [];
+          data.sessions.push({
+            date: new Date().toISOString(),
+            user: interaction.user.username,
+            group: plan.group,
+            artist: plan.artist,
+            prod: plan.prod,
+            time: plan.time,
+          });
+          fs.writeFileSync(dataFile, JSON.stringify(data, null, 2), 'utf8');
 
-      const ust = interaction.options.getString('ust') || '';
-      const ustSaat = interaction.options.getString('ust_saat') || '';
-      const ustProd = interaction.options.getUser('ust_prod');
-      const ustProdMention = ustProd ? `<@${ustProd.id}>` : '';
-
-      const alt = interaction.options.getString('alt') || '';
-      const altSaat = interaction.options.getString('alt_saat') || '';
-      const altProd = interaction.options.getUser('alt_prod');
-      const altProdMention = altProd ? `<@${altProd.id}>` : '';
-
-      const notStr = interaction.options.getString('not') || '—';
-
-      if (!ust && !alt) {
-        return interaction.editReply({
-          content: '❌ En az **üst** veya **alt** için bir bilgi girmelisin (isim/saat).',
-        });
+          // Temizle
+          delete session[userId];
+        }
       }
-
-      const tarihDisplay = tarihInput?.trim() || bugununTarihiTR_Display();
-
-      const ustDate = ustSaat ? buildTRDate(tarihInput, ustSaat) : null;
-      const altDate = altSaat ? buildTRDate(tarihInput, altSaat) : null;
-
-      const content = buildProgramMessage({
-        tarihDisplay,
-        ust,
-        alt,
-        ustSaat,
-        altSaat,
-        ustProdMention,
-        altProdMention,
-        notStr,
-      });
-
-      const sent =
-        (await targetChannel.send({ content }).catch(() => null)) ||
-        (await interaction.channel.send({ content }));
-
-      const sUst = ust && ustDate
-        ? scheduleReminder({
-            eventDate: ustDate,
-            channelId: sent.channelId,
-            groupName: ust,
-          })
-        : false;
-
-      const sAlt = alt && altDate
-        ? scheduleReminder({
-            eventDate: altDate,
-            channelId: sent.channelId,
-            groupName: alt,
-          })
-        : false;
-
-      const status = [];
-      if (ust)
-        status.push(
-          `Üst: ${
-            sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-      if (alt)
-        status.push(
-          `Alt: ${
-            sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-
-      return interaction.editReply({
-        content: `✅ Program paylaşıldı. ${status.join(' • ') || ''}`,
-      });
-    }
-
-    /* /bugun – ephemeral */
-    if (interaction.commandName === 'bugun') {
-      await interaction.deferReply({ ephemeral: true }); // zaman aşımı önle
-
-      const ust = interaction.options.getString('ust') || '';
-      const ustSaat = interaction.options.getString('ust_saat') || '';
-      const ustProd = interaction.options.getUser('ust_prod');
-      const ustProdMention = ustProd ? `<@${ustProd.id}>` : '';
-
-      const alt = interaction.options.getString('alt') || '';
-      const altSaat = interaction.options.getString('alt_saat') || '';
-      const altProd = interaction.options.getUser('alt_prod');
-      const altProdMention = altProd ? `<@${altProd.id}>` : '';
-
-      const notStr = interaction.options.getString('not') || '—';
-
-      if (!ust && !alt) {
-        return interaction.editReply({
-          content: '❌ En az **üst** veya **alt** için bir bilgi girmelisin (isim/saat).',
-        });
-      }
-
-      const tarihDisplay = bugununTarihiTR_Display();
-
-      const ustDate = ustSaat ? buildTRDate(null, ustSaat) : null;
-      const altDate = altSaat ? buildTRDate(null, altSaat) : null;
-
-      const content = buildProgramMessage({
-        tarihDisplay,
-        ust,
-        alt,
-        ustSaat,
-        altSaat,
-        ustProdMention,
-        altProdMention,
-        notStr,
-      });
-
-      const sent =
-        (await targetChannel.send({ content }).catch(() => null)) ||
-        (await interaction.channel.send({ content }));
-
-      const sUst = ust && ustDate
-        ? scheduleReminder({
-            eventDate: ustDate,
-            channelId: sent.channelId,
-            groupName: ust,
-          })
-        : false;
-
-      const sAlt = alt && altDate
-        ? scheduleReminder({
-            eventDate: altDate,
-            channelId: sent.channelId,
-            groupName: alt,
-          })
-        : false;
-
-      const status = [];
-      if (ust)
-        status.push(
-          `Üst: ${
-            sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-      if (alt)
-        status.push(
-          `Alt: ${
-            sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-
-      return interaction.editReply({
-        content: `✅ Bugünün programı paylaşıldı. ${status.join(' • ') || ''}`,
-      });
     }
   } catch (err) {
-    console.error('❌ Komut çalıştırma hatası:', err);
-    if (interaction.isRepliable()) {
-      try {
-        await interaction.reply({
-          content: '❌ Bir hata oluştu. Lütfen tekrar deneyin.',
-        });
-      } catch {}
-    }
+    console.error('❌ Interaction Hatası:', err);
   }
 });
 
-/* -------------------- Login -------------------- */
-client.login(process.env.DISCORD_TOKEN);
-
-import express from "express";
+/* -------------------- Express Sunucusu -------------------- */
 const app = express();
+app.get('/', (req, res) => res.send('✅ Recordooze Bot aktif!'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🌐 Web sunucusu ayakta: http://localhost:${PORT}`));
 
-app.get("/", (req, res) => {
-  res.send("✅ Recordooze Bot aktif ve çalışıyor!");
+/* -------------------- Slash Komut Dinleyici -------------------- */
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  try {
+    const { commandName } = interaction;
+
+    // /bugun komutu → Dooze Asistanı başlat
+    if (commandName === 'bugun') {
+      if (!hasAllowedRole(interaction)) {
+        return interaction.reply({
+          content: '🚫 Bu komutu kullanma yetkin yok dostum. Belki kayıt odasına kahve götürebilirsin ☕️',
+          ephemeral: true,
+        });
+      }
+      await wizStart(interaction);
+      return;
+    }
+
+    // Diğer komutları çalıştır
+    const command = client.commands.get(commandName);
+    if (command) await command.execute(interaction, client);
+  } catch (err) {
+    console.error('❌ Interaction Hatası:', err);
+
+    // ✅ 40060 hatasına karşı güvenli hata cevabı
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: '❌ Bir hata oluştu.', ephemeral: true });
+      } else {
+        console.warn('⚠️ Interaction zaten yanıtlandı, ikinci cevap gönderilmedi.');
+      }
+    } catch (e) {
+      console.error('⚠️ Hata cevabı da gönderilemedi:', e);
+    }
+  }
 });
 
-app.listen(3000, () => {
-  console.log("🌐 Web sunucusu ayakta, Render portuna bağlandı!");
-});
-
+/* -------------------- Botu Başlat -------------------- */
+client.login(process.env.TOKEN);

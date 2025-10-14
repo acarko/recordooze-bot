@@ -1,44 +1,33 @@
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import fs from 'fs';
-import path from 'path';
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const commands = [];
 
-// Komut dosyalarını commands klasöründen oku
-const commandsPath = path.resolve('./commands');
-if (fs.existsSync(commandsPath)) {
-  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+// commands klasöründeki tüm .js dosyalarını al
+const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 
-  for (const file of commandFiles) {
-    const commandModule = await import(`./commands/${file}`);
-
-    // Hem "export const data" hem de "export default { data }" formatlarını destekle
-    const cmdData = commandModule.data || commandModule.default?.data;
-    if (cmdData) {
-      commands.push(cmdData.toJSON());
-      console.log(`✅ Komut yüklendi: ${cmdData.name}`);
-    } else {
-      console.warn(`⚠️ Komut yüklenemedi: ${file} (data bulunamadı)`);
-    }
-  }
-} else {
-  console.warn("⚠️ 'commands' klasörü bulunamadı. Komutlar yüklenmeyecek.");
+for (const file of commandFiles) {
+  const command = await import(`./commands/${file}`);
+  commands.push(command.data.toJSON());
 }
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-// Slash komutlarını kaydet
 (async () => {
   try {
-    console.log(`🔁 ${commands.length} komut Discord’a yükleniyor...`);
+    console.log('🔁 Komutlar Discord’a yükleniyor...');
 
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
 
-    console.log('✅ Komutlar başarıyla yüklendi!');
+    console.log(`✅ ${commands.length} komut başarıyla yüklendi!`);
   } catch (error) {
     console.error('❌ Komut yüklenirken hata oluştu:', error);
   }

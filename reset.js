@@ -1,11 +1,11 @@
 // ===== reset.js =====
 // Bu dosya tüm slash komutlarını (global + guild) temizler.
-// Kullanım: terminalde  ->  node reset.js
+// Kullanım: terminalde -> node reset.js
 
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 async function resetCommands() {
   try {
@@ -21,7 +21,7 @@ async function resetCommands() {
     }
 
     console.log('\n🎉 Tüm komutlar başarıyla sıfırlandı.');
-    console.log('📌 Şimdi terminalde "node index.js" komutunu çalıştırarak botu yeniden başlatabilirsin.');
+    console.log('📌 Şimdi terminalde "node deploy-commands.js" ve ardından "node index.js" komutlarını çalıştır.');
   } catch (err) {
     console.error('❌ Komut sıfırlama sırasında hata oluştu:', err);
   }
