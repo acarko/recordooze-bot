@@ -1,34 +1,39 @@
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import fs from 'fs';
-
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+import path from 'path';
 
 const commands = [];
-
-// commands klasöründeki tüm .js dosyalarını al
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
+const addedNames = new Set(); // 👈 Tekrar kontrolü için eklendi
+const commandsPath = path.join(process.cwd(), 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
   const command = await import(`./commands/${file}`);
-  commands.push(command.data.toJSON());
+  const cmd = command.data || command.default?.data;
+
+  if (cmd) {
+    if (addedNames.has(cmd.name)) {
+      console.warn(`⚠️ Uyarı: '${cmd.name}' komutu zaten eklendi, ${file} atlanıyor.`);
+      continue;
+    }
+    commands.push(cmd.toJSON());
+    addedNames.add(cmd.name);
+    console.log(`✅ Komut bulundu: ${cmd.name}`);
+  } else {
+    console.warn(`⚠️ Uyarı: ${file} içinde 'data' export'u yok, atlanıyor.`);
+  }
 }
 
-const rest = new REST({ version: '10' }).setToken(TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-(async () => {
-  try {
-    console.log('🔁 Komutlar Discord’a yükleniyor...');
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-
-    console.log(`✅ ${commands.length} komut başarıyla yüklendi!`);
-  } catch (error) {
-    console.error('❌ Komut yüklenirken hata oluştu:', error);
-  }
-})();
+try {
+  console.log('🔁 Komutlar Discord\'a yükleniyor...');
+  await rest.put(
+    Routes.applicationCommands(process.env.CLIENT_ID),
+    { body: commands }
+  );
+  console.log('✅ Komutlar başarıyla yüklendi!');
+} catch (error) {
+  console.error('❌ Yükleme hatası:', error);
+}
