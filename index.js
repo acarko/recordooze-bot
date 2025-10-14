@@ -1,4 +1,4 @@
-// ===== Recordooze Bot v5 – Final (Ephemeral ayrımı + ayrı saat/mention + sabit kanal + hatırlatıcı) =====
+// ===== Recordooze Bot v6 – Stüdyo + Müzik =====
 import 'dotenv/config';
 import {
   Client,
@@ -9,8 +9,21 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 
+import {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  NoSubscriberBehavior,
+  AudioPlayerStatus,
+  getVoiceConnection,
+} from '@discordjs/voice';
+
+import ytdl from 'ytdl-core';
+import ytSearch from 'yt-search';
+
 /* -------------------- Client -------------------- */
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// Müzik için GuildVoiceStates intent gerekli
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
 /* -------------------- ENV / Ayarlar -------------------- */
 const GUILD_IDS = [process.env.GUILD_ID, process.env.PROD_GUILD_ID].filter(Boolean);
@@ -53,8 +66,7 @@ function normalizeSaat(hhmm) {
   if (!hhmm) return null;
   const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
-  const h = parseInt(m[1], 10),
-    min = parseInt(m[2], 10);
+  const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
   if (h < 0 || h > 23 || min < 0 || min > 59) return null;
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
@@ -104,8 +116,7 @@ function bugununTarihiTR_Display() {
   const ay = get('month');
   const yil = get('year');
   const haftagun = get('weekday');
-  const haftagunCap =
-    haftagun?.charAt(0).toUpperCase() + haftagun?.slice(1) || '';
+  const haftagunCap = haftagun?.charAt(0).toUpperCase() + haftagun?.slice(1) || '';
 
   return `${gun}.${ay}.${yil} / ${haftagunCap}`;
 }
@@ -154,8 +165,7 @@ function buildProgramMessage({
   if (alt && altProdMention) prodLines.push(`• Alt Prod: ${altProdMention}`);
   const prodBlock = prodLines.length ? prodLines.join('\n') + '\n\n' : '';
 
-  const note =
-    '```ansi\n' + `\u001b[2;37mNot :\u001b[0m ${notStr || '—'}\n` + '```';
+  const note = '```ansi\n' + `\u001b[2;37mNot :\u001b[0m ${notStr || '—'}\n` + '```';
 
   return header + body + prodBlock + note;
 }
@@ -195,6 +205,105 @@ setInterval(async () => {
     } catch {}
   }
 }, 15 * 1000);
+
+/* -------------------- Müzik Kuyruğu -------------------- */
+// guildId → { connection, player, queue: [{title,url,requestedBy}], playing, textChannelId }
+const music = new Map();
+
+function getOrCreateGuildPlayer(interaction) {
+  let m = music.get(interaction.guildId);
+  if (!m) {
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+    player.on('error', (e) => {
+      console.error('🎧 Player error:', e);
+      const state = music.get(interaction.guildId);
+      if (state?.textChannelId) {
+        client.channels.fetch(state.textChannelId).then((ch) => ch?.isTextBased() && ch.send('⚠️ Oynatıcı hatası. Bir sonraki parçaya geçiliyor…')).catch(()=>{});
+      }
+      playNext(interaction.guildId);
+    });
+    player.on(AudioPlayerStatus.Idle, () => playNext(interaction.guildId));
+    m = { connection: null, player, queue: [], playing: false, textChannelId: null };
+    music.set(interaction.guildId, m);
+  }
+  return m;
+}
+
+async function joinUserChannel(interaction) {
+  const channelId = interaction.member?.voice?.channelId;
+  if (!channelId) {
+    throw new Error('❌ Bir ses kanalına katılmalısın.');
+  }
+  const guild = interaction.guild;
+  const connection =
+    getVoiceConnection(guild.id) ||
+    joinVoiceChannel({
+      channelId,
+      guildId: guild.id,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: true,
+    });
+  return connection;
+}
+
+async function resolveQueryToTrack(query) {
+  if (ytdl.validateURL(query)) {
+    const info = await ytdl.getInfo(query);
+    return {
+      title: info.videoDetails.title,
+      url: info.videoDetails.video_url,
+    };
+  }
+  const res = await ytSearch(query);
+  const v = res?.videos?.[0];
+  if (!v) throw new Error('❌ Uygun bir sonuç bulunamadı.');
+  return { title: v.title, url: v.url };
+}
+
+function createStream(url) {
+  // ytdl-core üzerinden direkt webm/opus stream
+  const stream = ytdl(url, {
+    filter: 'audioonly',
+    quality: 'highestaudio',
+    highWaterMark: 1 << 25, // daha stabil buffer
+  });
+  const resource = createAudioResource(stream);
+  return resource;
+}
+
+async function playNext(guildId) {
+  const state = music.get(guildId);
+  if (!state) return;
+  if (state.playing) return;
+  const next = state.queue.shift();
+  if (!next) {
+    state.playing = false;
+    // Kuyruk bitti → bağlantıyı bırak
+    try { state.player.stop(true); } catch {}
+    try { state.connection?.destroy(); } catch {}
+    state.connection = null;
+    if (state.textChannelId) {
+      const ch = await client.channels.fetch(state.textChannelId).catch(()=>null);
+      if (ch?.isTextBased()) ch.send('✅ Kuyruk bitti. Kanaldan çıkıyorum.');
+    }
+    return;
+  }
+
+  try {
+    state.playing = true;
+    const resource = createStream(next.url);
+    state.player.play(resource);
+    if (state.textChannelId) {
+      const ch = await client.channels.fetch(state.textChannelId).catch(()=>null);
+      if (ch?.isTextBased()) ch.send(`▶️ **Şimdi çalıyor:** ${next.title}`);
+    }
+    state.playing = false; // Idle event tetiklenecek; burada false’a çekiyoruz ki çakışma olmasın
+  } catch (e) {
+    console.error('🎧 Çalma hatası:', e);
+    state.playing = false;
+    playNext(guildId);
+  }
+}
 
 /* -------------------- Slash Komutları -------------------- */
 const cmdPing = new SlashCommandBuilder()
@@ -258,6 +367,26 @@ const cmdBugun = new SlashCommandBuilder()
     o.setName('not').setDescription('Not (opsiyonel)').setRequired(false),
   );
 
+// === Müzik komutları ===
+const cmdOynat = new SlashCommandBuilder()
+  .setName('oynat')
+  .setDescription('YouTube linki veya arama ile şarkı çalar.')
+  .addStringOption((o) =>
+    o.setName('sorgu').setDescription('YouTube URL veya arama metni').setRequired(true),
+  );
+
+const cmdGec = new SlashCommandBuilder()
+  .setName('gec')
+  .setDescription('Çalan şarkıyı geçer (bir sonraki).');
+
+const cmdDurdur = new SlashCommandBuilder()
+  .setName('durdur')
+  .setDescription('Kuyruğu temizler ve kanaldan çıkar.');
+
+const cmdKuyruk = new SlashCommandBuilder()
+  .setName('kuyruk')
+  .setDescription('Kuyruğu gösterir.');
+
 /* -------------------- Komut Kayıt (Sadece Guild) -------------------- */
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
@@ -266,7 +395,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     for (const gid of GUILD_IDS) {
       await rest.put(
         Routes.applicationGuildCommands(process.env.CLIENT_ID, gid),
-        { body: [cmdPing, cmdHowto, cmdProgram, cmdBugun].map((c) => c.toJSON()) },
+        { body: [cmdPing, cmdHowto, cmdProgram, cmdBugun, cmdOynat, cmdGec, cmdDurdur, cmdKuyruk].map((c) => c.toJSON()) },
       );
       console.log(`✅ Komutlar yüklendi: ${gid}`);
     }
@@ -286,7 +415,6 @@ client.on('interactionCreate', async (interaction) => {
 
     // Rol kontrolü
     if (!hasAllowedRole(interaction)) {
-      // Herkese açık yanıt
       return interaction.reply({ content: '⛔ Bu komutu kullanma yetkin yok.' });
     }
 
@@ -299,7 +427,6 @@ client.on('interactionCreate', async (interaction) => {
 
     /* /ping – herkese açık */
     if (interaction.commandName === 'ping') {
-      // hızlı yanıt
       return interaction.reply({ content: '✅ Bot çalışıyor!' });
     }
 
@@ -312,47 +439,16 @@ client.on('interactionCreate', async (interaction) => {
           '🔧 **/ping** – Botun durumunu test eder (herkese açık).',
           '📅 **/bugun** – Bugün için program paylaşır (ephemeral).',
           '🗓️ **/program** – Belirtilen tarih için program paylaşır (ephemeral).',
+          '🎵 **/oynat** – YouTube URL veya arama metni ile kuyruğa ekler ve çalar.',
+          '⏭️ **/gec** – Bir sonraki şarkıya geçer.',
+          '⏹️ **/durdur** – Kuyruğu temizler ve ses kanalından çıkar.',
+          '📃 **/kuyruk** – Bekleyen parçaları gösterir.',
           '',
           '👑 **Rol Kontrolü:** Sadece yetkili roller komut çalıştırabilir.',
           '🔔 **Hatırlatıcı:** Üst/alt için ayrı ayrı **30 dk önce** otomatik bildirim.',
-          '📢 **Hatırlatma Formatı:**',
-          '`📢 @<rol> – <Grup> provası/kayıt seansı 30 dakika sonra başlıyor!`',
-          '`Hazırlıklarınızı tamamlayın. 🎶`',
-          '',
-          '🧭 **Mesajlar:** Her zaman sabit kanala gönderilir (DEFAULT_CHANNEL_ID).',
+          '🧭 **Mesajlar:** Program postları sabit kanala gider (DEFAULT_CHANNEL_ID).',
         ].join('\n'))
-        .addFields(
-          {
-            name: '📅 /bugun',
-            value: [
-              '**Parametreler (opsiyonel):**',
-              '• `ust`, `ust_saat (HH:MM)`, `ust_prod (kullanıcı)`',
-              '• `alt`, `alt_saat (HH:MM)`, `alt_prod (kullanıcı)`',
-              '• `not`',
-              '⏰ Saat verilirse 30 dk önce hatırlatıcı kurulur (üst/alt ayrı).',
-            ].join('\n'),
-          },
-          {
-            name: '🗓️ /program',
-            value: [
-              '**Parametreler (opsiyonel):**',
-              '• `tarih` – `gg.aa.yy / Haftagünü` (boşsa bugün)',
-              '• `ust`, `ust_saat (HH:MM)`, `ust_prod (kullanıcı)`',
-              '• `alt`, `alt_saat (HH:MM)`, `alt_prod (kullanıcı)`',
-              '• `not`',
-            ].join('\n'),
-          },
-          {
-            name: 'ℹ️ Notlar',
-            value: [
-              '• Üst/alt tamamen opsiyonel; sadece biri doldurulabilir.',
-              '• Saat `HH:MM` biçiminde olmalı (örn: 23:00).',
-              '• 30 dk’tan az kalmışsa hatırlatıcı kurulmaz.',
-              '• `/bugun` ve `/program` yanıtları **ephemeral** (sadece kullanan görür).',
-            ].join('\n'),
-          },
-        )
-        .setFooter({ text: 'Recordooze • stüdyo asistanı' });
+        .setFooter({ text: 'Recordooze • stüdyo asistanı + müzik' });
 
       return interaction.reply({ embeds: [emb] });
     }
@@ -418,18 +514,8 @@ client.on('interactionCreate', async (interaction) => {
         : false;
 
       const status = [];
-      if (ust)
-        status.push(
-          `Üst: ${
-            sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-      if (alt)
-        status.push(
-          `Alt: ${
-            sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
+      if (ust) status.push(`Üst: ${sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'}`);
+      if (alt) status.push(`Alt: ${sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'}`);
 
       return interaction.editReply({
         content: `✅ Program paylaşıldı. ${status.join(' • ') || ''}`,
@@ -495,30 +581,77 @@ client.on('interactionCreate', async (interaction) => {
         : false;
 
       const status = [];
-      if (ust)
-        status.push(
-          `Üst: ${
-            sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
-      if (alt)
-        status.push(
-          `Alt: ${
-            sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'
-          }`,
-        );
+      if (ust) status.push(`Üst: ${sUst ? '⏰ kuruldu' : ustSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'}`);
+      if (alt) status.push(`Alt: ${sAlt ? '⏰ kuruldu' : altSaat ? '⏰ kurulmadı (<30dk)' : '⏰ saat yok'}`);
 
       return interaction.editReply({
         content: `✅ Bugünün programı paylaşıldı. ${status.join(' • ') || ''}`,
       });
     }
+
+    // === MÜZİK ===
+    if (interaction.commandName === 'oynat') {
+      await interaction.deferReply({ ephemeral: false });
+      const query = interaction.options.getString('sorgu', true);
+
+      // ses kanalına katıl
+      const connection = await joinUserChannel(interaction);
+      const state = getOrCreateGuildPlayer(interaction);
+      state.connection = connection;
+      state.textChannelId = interaction.channelId;
+      connection.subscribe(state.player);
+
+      // parça çöz
+      const track = await resolveQueryToTrack(query);
+      state.queue.push({ ...track, requestedBy: interaction.user.id });
+
+      // eğer çalmıyorsa başlat
+      if (!state.playing && state.player.state.status !== AudioPlayerStatus.Playing) {
+        // Kuyruğun ilk elemanına geç
+        playNext(interaction.guildId);
+      }
+
+      return interaction.editReply(`🎶 **Eklendi:** ${track.title}`);
+    }
+
+    if (interaction.commandName === 'gec') {
+      const state = music.get(interaction.guildId);
+      if (!state || (!state.queue.length && state.player.state.status !== AudioPlayerStatus.Playing)) {
+        return interaction.reply({ content: '⏹️ Kuyruk boş ya da çalmıyor.', ephemeral: false });
+      }
+      try { state.player.stop(true); } catch {}
+      return interaction.reply({ content: '⏭️ Geçildi.', ephemeral: false });
+    }
+
+    if (interaction.commandName === 'durdur') {
+      const state = music.get(interaction.guildId);
+      if (state) {
+        state.queue.length = 0;
+        try { state.player.stop(true); } catch {}
+        try { state.connection?.destroy(); } catch {}
+        state.connection = null;
+      }
+      return interaction.reply({ content: '⏹️ Durdurdum ve kanaldan çıktım.', ephemeral: false });
+    }
+
+    if (interaction.commandName === 'kuyruk') {
+      const state = music.get(interaction.guildId);
+      const list = state?.queue ?? [];
+      if (!list.length && state?.player?.state?.status !== AudioPlayerStatus.Playing) {
+        return interaction.reply({ content: '📭 Kuyruk boş.', ephemeral: false });
+      }
+      const text = list
+        .slice(0, 10)
+        .map((t, i) => `${i + 1}. ${t.title}`)
+        .join('\n');
+      return interaction.reply({ content: `📃 Kuyruk:\n${text || '• (Sırada parça yok)'}`, ephemeral: false });
+    }
+
   } catch (err) {
     console.error('❌ Komut çalıştırma hatası:', err);
     if (interaction.isRepliable()) {
       try {
-        await interaction.reply({
-          content: '❌ Bir hata oluştu. Lütfen tekrar deneyin.',
-        });
+        await interaction.reply({ content: '❌ Bir hata oluştu. Lütfen tekrar deneyin.' });
       } catch {}
     }
   }
@@ -537,4 +670,3 @@ app.get("/", (req, res) => {
 app.listen(3000, () => {
   console.log("🌐 Web sunucusu ayakta, Render portuna bağlandı!");
 });
-
