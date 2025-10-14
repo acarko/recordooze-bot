@@ -1,18 +1,21 @@
 {
   "name": "recordooze-bot",
   "version": "1.0.0",
-  "description": "Stüdyo programı paylaşım botu (ANSI renkli format) + Müzik",
+  "description": "Stüdyo programı paylaşım botu (ANSI renkli format)",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@discordjs/voice": "^0.17.0",
+    "@discordjs/voice": "^0.19.0",
+    "@snazzah/davey": "^0.1.7",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
     "opusscript": "^0.0.8",
+    "play-dl": "^1.9.7",
+    "yt-dlp-exec": "^1.0.2",
     "yt-search": "^2.13.1",
     "ytdl-core": "^4.11.5"
   },
