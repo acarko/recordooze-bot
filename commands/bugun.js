@@ -7,11 +7,10 @@ import {
   EmbedBuilder,
 } from "discord.js";
 
-// Planın gönderileceği kanal
 const TARGET_CHANNEL_ID = "1392979113681096714";
 
 // Kullanıcı başına seçimleri tutar
-const sessions = new Map(); // userId -> { group, artist, prod, hour }
+const sessions = new Map(); // userId -> { group, artists[], prod, hour }
 
 export const data = new SlashCommandBuilder()
   .setName("bugun")
@@ -27,13 +26,14 @@ function buildMenus() {
     .addOptions(
       { label: "Echos", value: "Echos" },
       { label: "The Wound", value: "The Wound" },
+      { label: "SIM", value: "SIM" }
     );
 
   const artistMenu = new StringSelectMenuBuilder()
     .setCustomId("bugun:artist")
-    .setPlaceholder("🎙️ Sanatçı seç (opsiyonel)")
+    .setPlaceholder("🎙️ Sanatçı seç (0-3 arası)")
     .setMinValues(0)
-    .setMaxValues(1)
+    .setMaxValues(3)
     .addOptions(
       { label: "Donna Moritz", value: "Donna Moritz" },
       { label: "Aiden Reed", value: "Aiden Reed" },
@@ -44,18 +44,18 @@ function buildMenus() {
       { label: "Luke \"Ozzy\" Latham", value: "Luke \"Ozzy\" Latham" },
       { label: "Quenesha Brooks", value: "Quenesha Brooks" },
       { label: "Thomas Richardson", value: "Thomas Richardson" },
-      { label: "Tiana Lipsey", value: "Tiana Lipsey" },
+      { label: "Tiana Lipsey", value: "Tiana Lipsey" }
     );
 
   const prodMenu = new StringSelectMenuBuilder()
     .setCustomId("bugun:prod")
-    .setPlaceholder("🎚️ Prodüktör / Tonmaister seç (zorunlu)")
-    .setMinValues(1)
+    .setPlaceholder("🎚️ Prodüktör / Tonmaister seç (opsiyonel)")
+    .setMinValues(0)
     .setMaxValues(1)
     .addOptions(
       { label: "Donna Moritz", value: "Donna Moritz" },
       { label: "Aiden Reed", value: "Aiden Reed" },
-      { label: "Chuck Holloway", value: "Chuck Holloway" },
+      { label: "Chuck Holloway", value: "Chuck Holloway" }
     );
 
   const hours = [
@@ -87,9 +87,13 @@ function buildMenus() {
 }
 
 // ---- Komut çalıştır
-export async function execute(interaction/*, client*/) {
-  // kullanıcı için boş oturum başlat
-  sessions.set(interaction.user.id, { group: null, artist: null, prod: null, hour: null });
+export async function execute(interaction) {
+  sessions.set(interaction.user.id, {
+    group: null,
+    artists: [],
+    prod: null,
+    hour: null,
+  });
 
   await interaction.reply({
     content: "🤖 Dooze düşünüyor... Plan sihrini başlatalım! 💫",
@@ -112,78 +116,65 @@ export async function handleComponent(interaction, client) {
   if (ns !== "bugun") return false;
 
   const uid = interaction.user.id;
-  const sess = sessions.get(uid) ?? { group: null, artist: null, prod: null, hour: null };
+  const sess = sessions.get(uid) ?? { group: null, artists: [], prod: null, hour: null };
 
   // Seçimler
   if (interaction.isStringSelectMenu()) {
     if (key === "group") {
       sess.group = interaction.values[0] ?? null;
       sessions.set(uid, sess);
-      await interaction.reply({ content: `🎤 Grup: **${sess.group ?? "—"}**`, ephemeral: true });
+      await interaction.reply({ content: `🎤 Grup: **${sess.group ?? "Belirtilmedi"}**`, ephemeral: true });
       return true;
     }
     if (key === "artist") {
-      sess.artist = interaction.values[0] ?? null;
+      sess.artists = interaction.values.length > 0 ? interaction.values : [];
       sessions.set(uid, sess);
-      await interaction.reply({ content: `🎙️ Sanatçı: **${sess.artist ?? "—"}**`, ephemeral: true });
+      const artistList = sess.artists.length > 0 ? sess.artists.join("\n🎙️ ") : "Belirtilmedi";
+      await interaction.reply({ content: `🎙️ Sanatçılar:\n🎙️ ${artistList}`, ephemeral: true });
       return true;
     }
     if (key === "prod") {
       sess.prod = interaction.values[0] ?? null;
       sessions.set(uid, sess);
-      await interaction.reply({ content: `🎚️ Prod/Tonmaister: **${sess.prod}**`, ephemeral: true });
+      await interaction.reply({ content: `🎚️ Prod/Tonmaister: **${sess.prod ?? "Belirtilmedi"}**`, ephemeral: true });
       return true;
     }
     if (key === "hour") {
       sess.hour = interaction.values[0] ?? null;
       sessions.set(uid, sess);
-      await interaction.reply({ content: `⏱️ Saat: **${sess.hour}**`, ephemeral: true });
+      await interaction.reply({ content: `⏱️ Saat: **${sess.hour ?? "Belirtilmedi"}**`, ephemeral: true });
       return true;
     }
   }
 
-  // Onay
+  // Onay butonu
   if (interaction.isButton() && key === "confirm") {
-    // Zorunlu alanlar kontrolü
-    if (!sess.prod || !sess.hour) {
-      await interaction.reply({
-        content: "❌ Prodüktör ve saat seçimi zorunludur.",
-        ephemeral: true,
-      });
+    const final = sessions.get(uid);
+    if (!final.hour) {
+      await interaction.reply({ content: "❌ Saat seçmeden plan oluşturamazsın!", ephemeral: true });
       return true;
     }
 
-    // Embed alanlarını dinamik kur (opsiyoneller boşsa ekleme)
-    const fields = [];
-    if (sess.group)  fields.push({ name: "🎤 Grup", value: sess.group, inline: true });
-    if (sess.artist) fields.push({ name: "🎙️ Sanatçı", value: sess.artist, inline: true });
-    fields.push({ name: "🎚️ Prodüktör", value: sess.prod, inline: true });
-    fields.push({ name: "⏱️ Saat", value: sess.hour, inline: true });
-
     const embed = new EmbedBuilder()
-      .setColor(0x9146ff)
-      .setTitle("🎉 Dooze Diyor ki: Stüdyo Sizi Bekliyor!")
-      .setDescription("Hmm… bakıyorum da stüdyoda işler kızışıyor 😳✨ Planı senin için hazırladım!")
-      .addFields(fields)
-      .setFooter({ text: "💜 Dooze Assistant" })
+      .setColor(0xff69b4)
+      .setTitle("📅 Bugünkü Stüdyo Planı")
+      .setDescription("🧠 Dooze her şeyi organize etti! İşte bugünün planı 💜")
+      .addFields(
+        { name: "🎤 Grup", value: final.group ?? "Belirtilmedi", inline: true },
+        { name: "🎙️ Sanatçılar", value: final.artists.length > 0 ? final.artists.join("\n") : "Belirtilmedi", inline: true },
+        { name: "🎚️ Prod/Tonmaister", value: final.prod ?? "Belirtilmedi", inline: true },
+        { name: "⏱️ Saat", value: final.hour ?? "Belirtilmedi", inline: true }
+      )
+      .setFooter({ text: "Dooze • Recordooze Bot" })
       .setTimestamp();
 
-    try {
-      const target = await client.channels.fetch(TARGET_CHANNEL_ID);
-      if (!target || !target.send) throw new Error("Hedef kanal bulunamadı veya mesaj gönderilemiyor.");
+    await client.channels.cache.get(TARGET_CHANNEL_ID)?.send({ embeds: [embed] });
 
-      await target.send({ embeds: [embed] });
-      await interaction.reply({ content: "✅ Plan hedef kanala gönderildi! 📡", ephemeral: true });
-    } catch (err) {
-      console.error("Plan gönderim hatası:", err);
-      await interaction.reply({
-        content: "❌ Plan hedef kanala gönderilemedi. Kanal ID’sini ve izinleri kontrol et.",
-        ephemeral: true,
-      });
-    } finally {
-      sessions.delete(uid); // oturumu temizle
-    }
-
+    await interaction.reply({
+      content: "✅ Plan başarıyla gönderildi! 💜 Dooze yine harikalar yarattı.",
+      ephemeral: true,
+    });
+    sessions.delete(uid);
     return true;
   }
 
