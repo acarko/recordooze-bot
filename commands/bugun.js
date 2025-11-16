@@ -40,12 +40,12 @@ function buildMenus() {
       { label: "Chuck Holloway", value: "Chuck Holloway" },
       { label: "Dylan Sutter", value: "Dylan Sutter" },
       { label: "Elias Reira", value: "Elias Reira" },
+      { label: "Lilija Jakstiene", value: "Lilija Jakstiene" }
       { label: "Lucas Aldgride", value: "Lucas Aldgride" },
       { label: "Luke \"Ozzy\" Latham", value: "Luke \"Ozzy\" Latham" },
       { label: "Quenesha Brooks", value: "Quenesha Brooks" },
       { label: "Thomas Richardson", value: "Thomas Richardson" },
       { label: "Tiana Lipsey", value: "Tiana Lipsey" },
-      { label: "Lilija Jakstiene", value: "Lilija Jakstiene" }
     );
 
   const prodMenu = new StringSelectMenuBuilder()
