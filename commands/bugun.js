@@ -44,7 +44,8 @@ function buildMenus() {
       { label: "Luke \"Ozzy\" Latham", value: "Luke \"Ozzy\" Latham" },
       { label: "Quenesha Brooks", value: "Quenesha Brooks" },
       { label: "Thomas Richardson", value: "Thomas Richardson" },
-      { label: "Tiana Lipsey", value: "Tiana Lipsey" }
+      { label: "Tiana Lipsey", value: "Tiana Lipsey" },
+      { label: "Lilija Jakstiene", value: "Lilija Jakstiene" }
     );
 
   const prodMenu = new StringSelectMenuBuilder()
