@@ -83,9 +83,19 @@ client.once(Events.ClientReady, () => {
   console.log("🤖 Bot aktif ve bağlı.");
 });
 
-// ---- keep-alive (Render vb.)
+// ---- KEEP-ALIVE (HEAD fixli)
 const app = express();
-app.get("/", (_, res) => res.send("Recordooze Bot çalışıyor. (Dooze buradaydı 💜)"));
+
+// HEAD isteğine ultra hızlı cevap (UptimeRobot FREE için şart)
+app.head("/", (req, res) => {
+  res.status(200).end();
+});
+
+// GET isteği olursa eski mesajı döndürelim
+app.get("/", (_, res) =>
+  res.send("Recordooze Bot çalışıyor. (Dooze buradaydı 💜)")
+);
+
 app.listen(process.env.PORT || 3000, () =>
   console.log(`🌐 Web sunucusu ayakta: http://localhost:${process.env.PORT || 3000}`)
 );
