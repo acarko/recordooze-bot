@@ -14,7 +14,8 @@ app.listen(port, () => { console.log(`🌍 Server Online: Port ${port}`); });
 const { 
     Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, 
     StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType,
-    ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder
+    ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder,
+    REST, Routes // [YENİ]: Komut yükleme araçları eklendi
 } = require('discord.js');
 const mongoose = require('mongoose');
 const moment = require('moment');
@@ -48,21 +49,20 @@ const client = new Client({
 // ⚙️ AYARLAR VE KANALLAR (BURAYI DOLDUR!)
 // =====================================================
 const KANALLAR = {
-    BOT_KULLANIM:   "1452748803248619522", // Komutların yazılacağı yer (#bot-kullanim)
-    RANDEVU_LOG:    "1392979113681096714", // Herkese açık randevu duyurusu (#randevu-duyuru)
-    PRODUKTOR_LOG:  "1452748120948736132", // Yönetim notları, scout vs. (#yonetim-log)
-    FINANS_LOG:     "1452748178163236917"  // Faturaların düşeceği yer (#finans)
+    BOT_KULLANIM:   "1452748803248619522", 
+    RANDEVU_LOG:    "1392979113681096714", 
+    PRODUKTOR_LOG:  "1452748120948736132", 
+    FINANS_LOG:     "1452748178163236917"  
 };
 
 const AYARLAR = {
-    PATRON_ID: "275359521273020416", // Senin ID'n (Değişmez, her yere erişir)
+    PATRON_ID: "275359521273020416", 
     
-    // [YENİ]: Buraya birden fazla Yönetici rolü ID'si ekleyebilirsin.
-    // Örn: ["PRODUKTOR_ROL_ID", "MENAJER_ROL_ID", "ASISTAN_ROL_ID"]
-    ROLLER_YONETIM: ["1334286852768923701", "1334286247899959336"], 
+    // [ÇOKLU ROL SİSTEMİ]: Buraya Yönetim/Prodüktör rollerinin ID'lerini yaz.
+    ROLLER_YONETIM: ["YONETICI_ROL_ID_1", "YONETICI_ROL_ID_2"], 
     
-    // Buraya tek bir rol (Stüdyo Üyesi / Müşteri) yeterli
-    ROL_UYE: "1334286012217819248",     
+    // Stüdyo Üyesi / Müşteri rolü
+    ROL_UYE: "UYE_ROL_ID",     
     
     // --- GÖRSELLER VE LINKLER ---
     RADYO_LINK: "https://stream.zeno.fm/fv0de10s1v6vv",
@@ -75,7 +75,6 @@ const AYARLAR = {
 };
 
 // --- PRODÜKTÖR ID LİSTESİ (DM İÇİN) ---
-// Randevu alındığında kime DM gitsin?
 const PRODUKTOR_IDS = {
     "Donna Moritz": "275359521273020416", 
     "Aiden Reed": "173499406006484992",
@@ -248,13 +247,8 @@ async function generateContractImages(textData, bgUrl, signData = null) {
 // --- UTILS ---
 const checkPerms = (i, role) => {
     const isPatron = i.user.id === AYARLAR.PATRON_ID;
-    
-    // [GÜNCELLEME]: Dizi içindeki herhangi bir role sahipse TRUE döner
     const isProd = AYARLAR.ROLLER_YONETIM.some(r => i.member.roles.cache.has(r)) || isPatron;
-    
-    // Üye rolü kontrolü (Tekil ID)
     const isArtist = i.member.roles.cache.has(AYARLAR.ROL_UYE) || isProd;
-    
     if (role === 'YONETIM' && !isProd) return false;
     if (role === 'UYE' && !isArtist) return false;
     return true;
@@ -329,11 +323,26 @@ const AI_TRIGGERS = {
 const KUFUR_LISTESI = ['amk', 'aq', 'oç', 'oe', 'anan', 'amına', 'siktir', 'yarak', 'yarrak', 'piç', 'göt'];
 
 client.once('ready', async () => {
-    console.log(`✅ Dooze V70.1 (Multi-Role Access) Hazır.`);
+    console.log(`✅ Dooze V70.2 (Auto-Deploy) Hazır.`);
     client.user.setActivity('Recordooze OS', { type: 2 });
     try { await mongoose.connect(process.env.MONGO_URL); console.log('✅ DB Bağlı'); } catch(e){ console.log(e); }
 
-    cron.schedule('0 20 1 * *', async () => { // Ayda bir istatistik
+    // --- [YENİ: OTOMATİK KOMUT YÜKLEYİCİ] ---
+    try {
+        const commands = [
+            { name: 'dooze', description: 'Recordooze OS Ana Menü' },
+            { name: 'yonetim', description: 'Yönetim Paneli (Yetkili)' },
+            { name: 'yapimci', description: 'Yapımcı Özel Paneli' },
+        ];
+        const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+        await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
+        console.log('✅ Slash Komutları Yüklendi!');
+    } catch (e) {
+        console.error('⚠️ Komut Yükleme Hatası:', e);
+    }
+    // ----------------------------------------
+
+    cron.schedule('0 20 1 * *', async () => { 
         try {
             const stats = await Istatistik.find().sort({toplamSeans: -1}).limit(5);
             if (stats.length === 0) return;
@@ -365,13 +374,12 @@ client.on('messageCreate', async message => {
 });
 
 // =====================================================
-// 🎯 ANA HANDLER (GÜNCELLENDİ VE SAĞLAMLAŞTIRILDI)
+// 🎯 ANA HANDLER
 // =====================================================
 client.on('interactionCreate', async interaction => {
     try {
         const { customId, user } = interaction;
 
-        // --- 1. SLASH COMMANDS ---
         if (interaction.isChatInputCommand()) {
             if (interaction.commandName === 'dooze') {
                 if(interaction.channelId !== KANALLAR.BOT_KULLANIM) return interaction.reply({content: `⚠️ Frekans karıştı. Burası yeri değil. <#${KANALLAR.BOT_KULLANIM}> kanalına gel.`, ephemeral:true});
@@ -388,8 +396,6 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // --- 2. MODAL GÖNDERİMLERİ (ÖNCELİKLİ) ---
-        // Modallar "Defer" kabul etmez, direkt gösterilmelidir.
         if (interaction.isButton() || interaction.isStringSelectMenu()) {
             const isModal = [
                 'act_sosyal', 'btn_fat_kes', 'modal_open_fat', 
@@ -399,13 +405,11 @@ client.on('interactionCreate', async interaction => {
                 'btn_legal_step2_trigger', 'menu_fat_hizmet', 'menu_legal_type'
             ].includes(customId) || customId?.startsWith('dgko_');
 
-            // Eğer modal değilse, hemen deferUpdate yapıp zaman kazanıyoruz.
             if (!isModal) {
                  await interaction.deferUpdate().catch(e => console.log('Defer Safe Guard:', e.message));
             }
         }
 
-        // --- 3. BUTON MANTIĞI ---
         if (interaction.isButton()) {
             if (customId === 'nav_home') await renderHome(interaction, true);
             if (customId === 'nav_admin') await renderAdmin(interaction, true);
@@ -413,42 +417,31 @@ client.on('interactionCreate', async interaction => {
             if (customId === 'app_finance') await renderFinance(interaction);
             if (customId === 'nav_producer') await renderProducerPanel(interaction, true);
             
-            // --- RANDEVU ---
             if (customId === 'act_randevu') {
                 if (!checkPerms(interaction, 'UYE')) return interaction.followUp({content: MSG.YETKI_YOK, ephemeral:true});
-                // Cache'i sıfırlıyoruz ki temiz sayfa açılsın
                 appCache.set(`randevu_${user.id}`, { grup: null, sanatci: [], produktor: null, saat: null });
-                
                 const r1 = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('menu_grup').setPlaceholder('Grup Seçimi').addOptions(GRUPLAR));
                 const r2 = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('menu_sanatci').setPlaceholder('Katılımcılar (Çoklu Seçim)').setMinValues(1).setMaxValues(5).addOptions(SANATCILAR));
                 const r3 = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('menu_produktor').setPlaceholder('Prodüktör').addOptions(PRODUKTORLER));
                 const r4 = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('menu_saat').setPlaceholder('Saat').addOptions(SAATLER));
                 const r5 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_save_randevu').setLabel('KAYDI OLUŞTUR').setStyle(3).setEmoji('💾'), new ButtonBuilder().setCustomId('app_studio').setLabel('Vazgeç').setStyle(2));
-                
                 await interaction.editReply({ content: '📝 **Randevu Kayıt:** Detayları gir, gerisini bana bırak.', embeds: [], components: [r1, r2, r3, r4, r5] });
             }
             if (customId === 'btn_save_randevu') {
-                // Veriyi kontrol et
                 const data = appCache.get(`randevu_${user.id}`);
-                
                 if (!data) return interaction.followUp({ content: `⚠️ **Veri Kaybı:** Sistem yeniden başlamış olabilir. Lütfen işlemi baştan yap.`, ephemeral: true });
-
                 let missing = [];
                 if (!data.grup) missing.push("Grup"); 
                 if (data.sanatci.length === 0) missing.push("Sanatçı");
                 if (!data.produktor) missing.push("Prodüktör");
                 if (!data.saat) missing.push("Saat");
-                
                 if (missing.length > 0) return interaction.followUp({ content: `⚠️ **Eksik Veri:** Şunları seçmedin: ${missing.join(', ')}`, ephemeral: true });
                 
-                // Veri tamamsa kaydet
                 await Randevu.create({ grupAdi: data.grup, sanatcilar: data.sanatci, tarih: data.saat, produktor: data.produktor, kullaniciId: user.id });
                 await updateStats(data.grup, data.sanatci);
-                
                 await interaction.followUp({ content: MSG.VERI_KAYIT, ephemeral: true });
                 await renderStudio(interaction); 
 
-                // TICKET OLUŞTUR
                 let icon = client.user.displayAvatarURL();
                 if (data.grup && GRUP_BILGILERI[data.grup]) icon = GRUP_BILGILERI[data.grup][0].image;
                 const body = createTicketBody(data.grup, data.saat, data.produktor);
@@ -457,19 +450,12 @@ client.on('interactionCreate', async interaction => {
                 const logChannel = client.channels.cache.get(KANALLAR.RANDEVU_LOG);
                 if (logChannel) await logChannel.send({ content: `📢 **Yeni Oturum:**`, embeds: [ticket] });
 
-                // DM BİLDİRİMİ
                 let prodID = PRODUKTOR_IDS[data.produktor];
                 if (!prodID) prodID = AYARLAR.PATRON_ID; 
-
                 if (prodID) {
                     try {
                         const prodUser = await client.users.fetch(prodID);
-                        if (prodUser) {
-                            await prodUser.send({ 
-                                content: `🔔 **Yeni Randevu Atandı:**\n**Grup:** ${data.grup}\n**Saat:** ${data.saat}`,
-                                embeds: [ticket]
-                            });
-                        }
+                        if (prodUser) await prodUser.send({ content: `🔔 **Yeni Randevu Atandı:**\n**Grup:** ${data.grup}\n**Saat:** ${data.saat}`, embeds: [ticket] });
                     } catch (dmErr) { console.log(`DM Hatası: ${data.produktor} kullanıcısına ulaşılamadı.`); }
                 }
             }
@@ -494,8 +480,6 @@ client.on('interactionCreate', async interaction => {
             if (customId === 'phone_radyo') {
                 const e = new EmbedBuilder().setColor(RENK.HATA).setTitle('📻 Radiodooze Player').setDescription(`\`[🔘=============] %85\`\n▶ 🔘 🔊\n\n**Şu an:** Los Santos Underground`).setThumbnail(AYARLAR.RADYO_LOGO);
                 const r = new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('CANLI DİNLE').setStyle(5).setURL(AYARLAR.RADYO_LINK), new ButtonBuilder().setCustomId('nav_home').setLabel('Kapat').setStyle(2));
-                // Modal trigger olmadığı için followUp yerine reply olmaz, editReply olmalı (defer var) ama bu yeni mesaj
-                // Defer yukarıda yapıldı, o yüzden followUp.
                 await interaction.followUp({ embeds: [e], components: [r], ephemeral: true });
             }
             if (customId === 'phone_profil') {
