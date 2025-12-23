@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Stüdyo programı paylaşım botu (ANSI renkli format)",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
@@ -23,3 +22,4 @@
     "node": ">=18.0.0"
   }
 }
+
