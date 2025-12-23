@@ -15,7 +15,7 @@ const {
     Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, 
     StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType,
     ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits, AttachmentBuilder,
-    REST, Routes // [YENİ]: Komut yükleme araçları eklendi
+    REST, Routes 
 } = require('discord.js');
 const mongoose = require('mongoose');
 const moment = require('moment');
@@ -46,7 +46,7 @@ const client = new Client({
 });
 
 // =====================================================
-// ⚙️ AYARLAR VE KANALLAR (BURAYI DOLDUR!)
+// ⚙️ AYARLAR VE KANALLAR
 // =====================================================
 const KANALLAR = {
     BOT_KULLANIM:   "1452748803248619522", 
@@ -58,11 +58,11 @@ const KANALLAR = {
 const AYARLAR = {
     PATRON_ID: "275359521273020416", 
     
-    // [ÇOKLU ROL SİSTEMİ]: Buraya Yönetim/Prodüktör rollerinin ID'lerini yaz.
-    ROLLER_YONETIM: ["YONETICI_ROL_ID_1", "YONETICI_ROL_ID_2"], 
+    // [GÜNCEL]: Buraya Prodüktör Rol ID'lerini girmen gerek.
+    ROLLER_YONETIM: ["1334286852768923701", "YONETICI_ROL_ID_2"], 
     
     // Stüdyo Üyesi / Müşteri rolü
-    ROL_UYE: "UYE_ROL_ID",     
+    ROL_UYE: "1334286012217819248",     
     
     // --- GÖRSELLER VE LINKLER ---
     RADYO_LINK: "https://stream.zeno.fm/fv0de10s1v6vv",
@@ -103,55 +103,23 @@ const SANATCILAR = [ { label: "Donna Moritz", value: "Donna Moritz" }, { label: 
 const SAATLER = ["14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30", "00:00", "00:30", "01:00", "01:30", "02:00"].map(s => ({ label: s, value: s }));
 const HIZMETLER = [{ label: "🎙️ Tonmaisterlik / Kayıt", value: "Tonmaisterlik" }, { label: "💼 Menajerlik / Temsil", value: "Menajerlik" }, { label: "🧠 Danışmanlık", value: "Danışmanlık" }, { label: "🎹 Beat / Altyapı", value: "Altyapı" }, { label: "🔧 Ekipman / Lojistik", value: "Ekipman" }, { label: "✨ Diğer", value: "Diğer" }];
 
-// --- GRUP BİLGİLERİ VE GÖRSELLERİ ---
+// --- GRUP BİLGİLERİ ---
 const GRUP_BILGILERI = {
     "Echos": [ 
-        { 
-            title: "👻 Gözlem Defteri: ECHOS", 
-            desc: "Bu stüdyonun temelleri atılırken onlar da buradaydı... **Recordooze** ile yaşıt, **2024** çıkışlı bir efsane.\n\n🎸 **Tarz:** Hard Rock & Metal\n📍 **Konum:** Los Santos\n\nDuvarların arasından süzülürken duyduğum o sert ve melankolik tınıların kaynağı onlar. Sadeliği savunurlar ama müzikal bir direniş başlatmaktan da geri durmazlar. Sokaktan gelen, asi ve isyankar ruhlarını sahnede tam randımanlı bir enerjiye dönüştürüyorlar. Melankolinin en sert hali.\n\n👥 **KADRO:**\n🎙️ **[Donna Moritz](https://facebrowser-tr.gta.world/DonDon#)** (Vokal & Baterist)\n🎸 **[Aiden Reed](https://facebrowser-tr.gta.world/aidenreed?ref=qs)** (Elektro Gitar)\n🎸 **[Luke \"Ozzy\" Latham](https://facebrowser-tr.gta.world/LOL?ref=qs)** (Bass Gitar)", 
-            image: "https://i.imgur.com/Kw5rhxw.png" 
-        }, 
-        { 
-            title: "🎵 Diskografi & Kayıtlar", 
-            desc: "Stüdyo kayıtlarında bizzat şahit olduğum eserler. Hepsi birer başkaldırı.\n\n💿 **EP:** [Back to Bright (Official Audio)](https://www.youtube.com/watch?v=vk6YXbscK9A&list=PLxMFJIDVQUJdvxlaU4uP0GyOWiYhIF4ji)\n🔥 **Çıkış Teklisi:** [Teenage](https://www.youtube.com/watch?v=wRSMcFW1l7g)\n💀 **Single:** [Deadly](https://www.youtube.com/watch?v=WgBwyCkRm9k)\n🕊️ **Single:** [Aphrodite (Official Video)](https://www.youtube.com/watch?v=QGDNhwyI7xE)\n\n🌐 **Resmi Sayfa:** [We Are Echos](https://facebrowser-tr.gta.world/pages/weareEchos)", 
-            image: "https://i.imgur.com/3armyQ1.png" 
-        } 
+        { title: "👻 Gözlem Defteri: ECHOS", desc: "Bu stüdyonun temelleri atılırken onlar da buradaydı... **Recordooze** ile yaşıt, **2024** çıkışlı bir efsane.\n\n🎸 **Tarz:** Hard Rock & Metal\n📍 **Konum:** Los Santos\n\nDuvarların arasından süzülürken duyduğum o sert ve melankolik tınıların kaynağı onlar. Sadeliği savunurlar ama müzikal bir direniş başlatmaktan da geri durmazlar. Sokaktan gelen, asi ve isyankar ruhlarını sahnede tam randımanlı bir enerjiye dönüştürüyorlar. Melankolinin en sert hali.\n\n👥 **KADRO:**\n🎙️ **[Donna Moritz](https://facebrowser-tr.gta.world/DonDon#)** (Vokal & Baterist)\n🎸 **[Aiden Reed](https://facebrowser-tr.gta.world/aidenreed?ref=qs)** (Elektro Gitar)\n🎸 **[Luke \"Ozzy\" Latham](https://facebrowser-tr.gta.world/LOL?ref=qs)** (Bass Gitar)", image: "https://i.imgur.com/Kw5rhxw.png" }, 
+        { title: "🎵 Diskografi & Kayıtlar", desc: "Stüdyo kayıtlarında bizzat şahit olduğum eserler. Hepsi birer başkaldırı.\n\n💿 **EP:** [Back to Bright (Official Audio)](https://www.youtube.com/watch?v=vk6YXbscK9A&list=PLxMFJIDVQUJdvxlaU4uP0GyOWiYhIF4ji)\n🔥 **Çıkış Teklisi:** [Teenage](https://www.youtube.com/watch?v=wRSMcFW1l7g)\n💀 **Single:** [Deadly](https://www.youtube.com/watch?v=WgBwyCkRm9k)\n🕊️ **Single:** [Aphrodite (Official Video)](https://www.youtube.com/watch?v=QGDNhwyI7xE)\n\n🌐 **Resmi Sayfa:** [We Are Echos](https://facebrowser-tr.gta.world/pages/weareEchos)", image: "https://i.imgur.com/3armyQ1.png" } 
     ],
     "The Wound": [ 
-        { 
-            title: "👻 Gözlem Defteri: THE WOUND", 
-            desc: "Stüdyoya ne zaman taze bir enerji gelse hemen hissederim. **The Wound**, dört kafadarın **2025** yılında kurduğu, Early 2000's enerjisi taşıyan sıkı bir Indie Rock grubu.\n\n🎸 **Tarz:** Indie Rock\n📍 **Konum:** Los Santos\n\nDeğişime ve uyuma inanan, yenilikten korkmayan bir ekipten bahsediyoruz. Henüz yolun başındalar, \"yeni kan\" olmanın verdiği o bitmek bilmeyen heyecanla stüdyoyu inletiyorlar. Canlı sahneleri şimdiden kulaktan kulağa yayılıyor.\n\n👥 **KADRO:**\n🎤 **[Elias Reira](https://facebrowser-tr.gta.world/elixr?ref=qs)** (Ritim Gitar & Vokal)\n🎸 **[Chuck Holloway](https://facebrowser-tr.gta.world/Chucky?ref=qs)** (Elektro Gitar)\n🎸 **[Lucas Aldgride](https://facebrowser-tr.gta.world/Luc4s?ref=qs)** (Bass Gitar)\n🥁 **[Thomas Richardson](https://facebrowser-tr.gta.world/ThomasRichardson?ref=qs)** (Baterist)", 
-            image: "https://i.imgur.com/b5KSFRn.png" 
-        }, 
-        { 
-            title: "🎵 Diskografi & Kayıtlar", 
-            desc: "Henüz diskografileri taze ama etkisi büyük. Kayıt odasında ter döktükleri o parça:\n\n🔥 **Single:** [Phantom Beat (Official Audio)](https://www.youtube.com/watch?v=RasISrXeECo)\n\n🌐 **Resmi Sayfa:** [The Wound](https://facebrowser-tr.gta.world/pages/TWD?ref=qs)", 
-            image: "" 
-        } 
+        { title: "👻 Gözlem Defteri: THE WOUND", desc: "Stüdyoya ne zaman taze bir enerji gelse hemen hissederim. **The Wound**, dört kafadarın **2025** yılında kurduğu, Early 2000's enerjisi taşıyan sıkı bir Indie Rock grubu.\n\n🎸 **Tarz:** Indie Rock\n📍 **Konum:** Los Santos\n\nDeğişime ve uyuma inanan, yenilikten korkmayan bir ekipten bahsediyoruz. Henüz yolun başındalar, \"yeni kan\" olmanın verdiği o bitmek bilmeyen heyecanla stüdyoyu inletiyorlar. Canlı sahneleri şimdiden kulaktan kulağa yayılıyor.\n\n👥 **KADRO:**\n🎤 **[Elias Reira](https://facebrowser-tr.gta.world/elixr?ref=qs)** (Ritim Gitar & Vokal)\n🎸 **[Chuck Holloway](https://facebrowser-tr.gta.world/Chucky?ref=qs)** (Elektro Gitar)\n🎸 **[Lucas Aldgride](https://facebrowser-tr.gta.world/Luc4s?ref=qs)** (Bass Gitar)\n🥁 **[Thomas Richardson](https://facebrowser-tr.gta.world/ThomasRichardson?ref=qs)** (Baterist)", image: "https://i.imgur.com/b5KSFRn.png" }, 
+        { title: "🎵 Diskografi & Kayıtlar", desc: "Henüz diskografileri taze ama etkisi büyük. Kayıt odasında ter döktükleri o parça:\n\n🔥 **Single:** [Phantom Beat (Official Audio)](https://www.youtube.com/watch?v=RasISrXeECo)\n\n🌐 **Resmi Sayfa:** [The Wound](https://facebrowser-tr.gta.world/pages/TWD?ref=qs)", image: "" } 
     ],
     "SiM": [ 
-        { 
-            title: "👻 Gözlem Defteri: SiM", 
-            desc: "Bazen tanıdık yüzlerin yepyeni bir şeye dönüşmesini izlemek büyüleyici oluyor... **2025** kuruluşlu bu grup, aslında şirketin deneyimli isimlerinin bir araya gelmesiyle oluşan bir \"Süper Grup\" projesi.\n\n🎸 **Tarz:** *Yükleniyor...*\n📍 **Konum:** Los Santos\n\nUzun süredir tekil olarak izlediğim **Tiana Lipsey**'in öncülük ettiği, eski grup üyesi **Dylan Sutter** ve yetenekli **Lilija Jakstiene**'nin katılımıyla şekillenen bir üçlü. Sabırla beklediler, eğitimlerden geçtiler ve şimdi sağlam bir altyapı ile geliyorlar. Henüz yeni sahne alıyorlar ama stüdyodaki disiplinleri korkutucu derecede iyi.\n\n👥 **KADRO:**\n🎤 **[Tiana Lipsey](https://facebrowser-tr.gta.world/tiana6?ref=qs)** (Vokal)\n🎸 **[Lilija Jakstiene](https://facebrowser-tr.gta.world/liliene?ref=qs)** (Elektro Gitar)\n🥁 **[Dylan Sutter](https://facebrowser-tr.gta.world/dsutter66?ref=qs)** (Baterist)", 
-            image: "https://i.imgur.com/QZA6lS4.png" 
-        }, 
-        { 
-            title: "🎵 Diskografi & Kayıtlar", 
-            desc: "🚧 **Yapım Aşamasında...**\n\nStüdyo ışıkları hala açık, içeriden sesler geliyor. Dooze henüz bitmiş bir kayıt raporlamadı ama yakındır.\n\n🌐 **Resmi Sayfa:** [Stranger in the Mirror](https://facebrowser-tr.gta.world/pages/sim?ref=qs)", 
-            image: "" 
-        } 
+        { title: "👻 Gözlem Defteri: SiM", desc: "Bazen tanıdık yüzlerin yepyeni bir şeye dönüşmesini izlemek büyüleyici oluyor... **2025** kuruluşlu bu grup, aslında şirketin deneyimli isimlerinin bir araya gelmesiyle oluşan bir \"Süper Grup\" projesi.\n\n🎸 **Tarz:** *Yükleniyor...*\n📍 **Konum:** Los Santos\n\nUzun süredir tekil olarak izlediğim **Tiana Lipsey**'in öncülük ettiği, eski grup üyesi **Dylan Sutter** ve yetenekli **Lilija Jakstiene**'nin katılımıyla şekillenen bir üçlü. Sabırla beklediler, eğitimlerden geçtiler ve şimdi sağlam bir altyapı ile geliyorlar. Henüz yeni sahne alıyorlar ama stüdyodaki disiplinleri korkutucu derecede iyi.\n\n👥 **KADRO:**\n🎤 **[Tiana Lipsey](https://facebrowser-tr.gta.world/tiana6?ref=qs)** (Vokal)\n🎸 **[Lilija Jakstiene](https://facebrowser-tr.gta.world/liliene?ref=qs)** (Elektro Gitar)\n🥁 **[Dylan Sutter](https://facebrowser-tr.gta.world/dsutter66?ref=qs)** (Baterist)", image: "https://i.imgur.com/QZA6lS4.png" }, 
+        { title: "🎵 Diskografi & Kayıtlar", desc: "🚧 **Yapım Aşamasında...**\n\nStüdyo ışıkları hala açık, içeriden sesler geliyor. Dooze henüz bitmiş bir kayıt raporlamadı ama yakındır.\n\n🌐 **Resmi Sayfa:** [Stranger in the Mirror](https://facebrowser-tr.gta.world/pages/sim?ref=qs)", image: "" } 
     ],
     "Doozeband": [ 
-        { 
-            title: "👻 Gözlem Defteri: DOOZEBAND", 
-            desc: "Burası Recordooze'un oyun alanı. Mesai bitince kravatları gevşetip (ya da tamamen çıkarıp) eğlendiğimiz yer.\n\n**Kadro:** Tüm Ekip (Part-time)\n**Motto:** Maksat muhabbet olsun.", 
-            image: "https://media1.tenor.com/m/212Gv8G01QAAAAAC/party-confetti.gif" 
-        }, 
-        { 
-            title: "🎵 Diskografi", 
-            desc: "Jam Sessions ve bolca kahkaha.\n\n🌐 **İletişim:** Stüdyo Ofis", 
-            image: "" 
-        } 
+        { title: "👻 Gözlem Defteri: DOOZEBAND", desc: "Burası Recordooze'un oyun alanı. Mesai bitince kravatları gevşetip (ya da tamamen çıkarıp) eğlendiğimiz yer.\n\n**Kadro:** Tüm Ekip (Part-time)\n**Motto:** Maksat muhabbet olsun.", image: "https://media1.tenor.com/m/212Gv8G01QAAAAAC/party-confetti.gif" }, 
+        { title: "🎵 Diskografi", desc: "Jam Sessions ve bolca kahkaha.\n\n🌐 **İletişim:** Stüdyo Ofis", image: "" } 
     ]
 };
 
@@ -526,6 +494,24 @@ client.on('interactionCreate', async interaction => {
                 const m = new StringSelectMenuBuilder().setCustomId('menu_proje_select').setPlaceholder('Proje Seç').addOptions(projeler.map(p => ({label: p.baslik, value: p._id.toString()})));
                 await interaction.editReply({components:[new ActionRowBuilder().addComponents(m)]});
             }
+
+            // [YENİ] PROJE SİLME BUTON İŞLEVİ EKLENDİ
+            if (customId === 'btn_proje_del_menu') {
+                const projeler = await Proje.find();
+                if(projeler.length === 0) return interaction.followUp({content:'Silinecek proje yok.', ephemeral:true});
+                
+                const m = new StringSelectMenuBuilder()
+                    .setCustomId('menu_proje_delete') // Menü ID'si
+                    .setPlaceholder('Hangi projeyi silelim?')
+                    .addOptions(projeler.map(p => ({
+                        label: p.baslik.substring(0, 99), // Uzun isim hatasını önlemek için kesiyoruz
+                        value: p._id.toString()
+                    })));
+                
+                const r = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_proje_list').setLabel('Geri').setStyle(2));
+                await interaction.editReply({content: '🗑️ Silinecek projeyi seç:', components:[new ActionRowBuilder().addComponents(m), r]});
+            }
+
             if (customId === 'btn_scout_list') await renderScoutList(interaction);
             if (customId === 'btn_scout_add') {
                 const modal = new ModalBuilder().setCustomId('modal_scout').setTitle('Yetenek Avcısı');
@@ -700,6 +686,13 @@ client.on('interactionCreate', async interaction => {
                     await renderProjeList(interaction);
                 }
             }
+            // [YENİ] PROJE SİLME İŞLEVİ (MENÜ SEÇİMİ)
+            if (customId === 'menu_proje_delete') {
+                await Proje.findByIdAndDelete(val); // Seçilen ID'yi veritabanından siler
+                await interaction.followUp({content: '✅ Proje kalıcı olarak silindi.', ephemeral: true});
+                await renderProjeList(interaction); // Listeyi yeniler
+            }
+
             if (customId === 'menu_scout_select') {
                 const s = await Scout.findById(val);
                 if(s) {
@@ -866,7 +859,14 @@ async function renderProjeList(i) {
     const projeler = await Proje.find().sort({sonGuncelleme: -1});
     const list = projeler.map(p => `🎛️ **${p.baslik}**\n${createProgressBar(p.yuzde)} %${p.yuzde} (${p.durum})`).join('\n\n') || "📭 Proje yok.";
     const e = new EmbedBuilder().setTitle('🎛️ Stüdyo Projeleri (Kanban)').setColor(RENK.TURUNCU).setDescription(list);
-    const r = new ActionRowBuilder().addComponents( new ButtonBuilder().setCustomId('btn_proje_add').setLabel('Yeni Proje').setStyle(3), new ButtonBuilder().setCustomId('btn_proje_update').setLabel('Durum Güncelle').setStyle(1), new ButtonBuilder().setCustomId('app_studio').setLabel('Geri').setStyle(2) );
+    
+    // [GÜNCELLEME]: Sil butonu eklendi
+    const r = new ActionRowBuilder().addComponents( 
+        new ButtonBuilder().setCustomId('btn_proje_add').setLabel('Yeni Proje').setStyle(3), 
+        new ButtonBuilder().setCustomId('btn_proje_update').setLabel('Durum Güncelle').setStyle(1), 
+        new ButtonBuilder().setCustomId('btn_proje_del_menu').setLabel('Sil').setStyle(4), 
+        new ButtonBuilder().setCustomId('app_studio').setLabel('Geri').setStyle(2) 
+    );
     await i.editReply({content:null, embeds:[e], components:[r]});
 }
 async function renderScoutList(i) {
