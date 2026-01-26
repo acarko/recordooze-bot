@@ -48,6 +48,8 @@ const client = new Client({
 // =====================================================
 // ⚙️ AYARLAR VE KANALLAR
 // =====================================================
+const HEDEF_SUNUCU_ID = "1238969004819878000"; 
+
 const KANALLAR = {
     BOT_KULLANIM:   "1452748803248619522", 
     RANDEVU_LOG:    "1392979113681096714", 
@@ -58,7 +60,7 @@ const KANALLAR = {
 const AYARLAR = {
     PATRON_ID: "275359521273020416", 
     
-    // [GÜNCEL]: Buraya Prodüktör Rol ID'lerini girmen gerek.
+    // [GÜNCEL]: Prodüktör Rol ID'leri
     ROLLER_YONETIM: ["1334286852768923701", "YONETICI_ROL_ID_2"], 
     
     // Stüdyo Üyesi / Müşteri rolü
@@ -97,6 +99,9 @@ const MSG = {
 };
 
 // --- DATA ---
+// [EKLENDİ] Eksik olan AYLAR dizisi eklendi (Hata düzeltmesi)
+const AYLAR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+
 const GRUPLAR = [{ label: "Grup Yok / Solo", value: "Solo" }, { label: "Echos", value: "Echos" }, { label: "The Wound", value: "The Wound" }, { label: "SiM", value: "SiM" }, { label: "Diğer Proje", value: "Diğer" }, { label: "Doozeband", value: "Doozeband" }];
 const PRODUKTORLER = [ { label: "Donna Moritz", value: "Donna Moritz" }, { label: "Aiden Reed", value: "Aiden Reed" }, { label: "Chuck Holloway", value: "Chuck Holloway" }, { label: "Geçici / Asistan", value: "Geçici" } ];
 const SANATCILAR = [ { label: "Donna Moritz", value: "Donna Moritz" }, { label: "Aiden Reed", value: "Aiden Reed" }, { label: "Chuck Holloway", value: "Chuck Holloway" }, { label: "Dylan Sutter", value: "Dylan Sutter" }, { label: "Elias Reira", value: "Elias Reira" }, { label: "Lucas Aldgride", value: "Lucas Aldgride" }, { label: "Lilija Jakstiene", value: "Lilija Jakstiene" }, { label: "Luke Latham", value: "Luke Latham" }, { label: "Quenesha Brooks", value: "Quenesha Brooks" }, { label: "Thomas Richardson", value: "Thomas Richardson" }, { label: "Tiana Lipsey", value: "Tiana Lipsey" }, { label: "Misafir / Diğer", value: "Misafir" } ];
@@ -295,7 +300,7 @@ client.once('ready', async () => {
     client.user.setActivity('Recordooze OS', { type: 2 });
     try { await mongoose.connect(process.env.MONGO_URL); console.log('✅ DB Bağlı'); } catch(e){ console.log(e); }
 
-    // --- [YENİ: OTOMATİK KOMUT YÜKLEYİCİ] ---
+    // --- [OTOMATİK KOMUT YÜKLEYİCİ] ---
     try {
         const commands = [
             { name: 'dooze', description: 'Recordooze OS Ana Menü' },
@@ -303,13 +308,14 @@ client.once('ready', async () => {
             { name: 'yapimci', description: 'Yapımcı Özel Paneli' },
         ];
         const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-        await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
-        console.log('✅ Slash Komutları Yüklendi!');
+        await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, HEDEF_SUNUCU_ID), { body: commands });
+        console.log(`✅ Slash Komutları ${HEDEF_SUNUCU_ID} sunucusuna yüklendi!`);
     } catch (e) {
         console.error('⚠️ Komut Yükleme Hatası:', e);
     }
     // ----------------------------------------
 
+    // AYLIK İSTATİSTİK (Ayın 1'inde)
     cron.schedule('0 20 1 * *', async () => { 
         try {
             const stats = await Istatistik.find().sort({toplamSeans: -1}).limit(5);
@@ -321,6 +327,35 @@ client.once('ready', async () => {
             if(channel) channel.send({embeds:[e]}); 
         } catch (err) { console.error('Cron Hatası:', err); }
     });
+
+    // [YENİ] GÜNLÜK DOĞUM GÜNÜ KONTROLÜ (Sabah 10:00'da çalışır)
+    cron.schedule('0 10 * * *', async () => {
+        try {
+            const today = new Date();
+            const currentDay = today.getDate().toString();
+            const currentMonth = (today.getMonth() + 1).toString(); // Ay 0'dan başlar, +1 ekliyoruz
+
+            const birthdays = await DogumGunu.find({ gun: currentDay, ay: currentMonth });
+            
+            if (birthdays.length > 0) {
+                const names = birthdays.map(b => b.ad).join(' ve ');
+                const message = `📢 **GÜNAYDIN MİLLET!** ☀️\n\nBugün takvimde özel bir gün işaretli. Stüdyoda pasta kesilecek mi bilmiyorum ama **${names}** bugün yaş alıyor.\n\nKendisini görürseniz kutlayın, görmezseniz de hediyenizi resepsiyona bırakın. İyi ki doğdun! 🎂🎸`;
+                
+                // Mesajı Randevu Log kanalına (Duyuru niyetiyle) atıyoruz. 
+                // İstersen KANALLAR.BOT_KULLANIM olarak değiştirebilirsin.
+                const channel = client.channels.cache.get(KANALLAR.RANDEVU_LOG);
+                if (channel) {
+                    await channel.send({ content: `<@&${AYARLAR.ROL_UYE}>`, embeds: [
+                        new EmbedBuilder()
+                            .setColor(RENK.PEMBE)
+                            .setTitle('🎂 HAPPY BIRTHDAY')
+                            .setDescription(message)
+                            .setThumbnail('https://media.tenor.com/7vj7O1F7cOQAAAAi/birthday-cake.gif')
+                    ]});
+                }
+            }
+        } catch (err) { console.error('DGKO Cron Hatası:', err); }
+    });
 });
 
 client.on('messageCreate', async message => {
@@ -331,7 +366,7 @@ client.on('messageCreate', async message => {
         if (content.includes(key)) { 
             await message.reply(reply);
             if (KUFUR_LISTESI.includes(key)) {
-                const isAuth = message.member.roles.cache.has(AYARLAR.ROL_PRODUKTOR) || message.author.id === AYARLAR.PATRON_ID;
+                const isAuth = message.member.roles.cache.has(AYARLAR.ROLLER_YONETIM[0]) || message.author.id === AYARLAR.PATRON_ID;
                 if (!isAuth && message.member.moderatable) {
                     try { await message.member.timeout(60 * 1000, 'Dooze: Terbiye Sınırı İhlali'); } catch (e) {}
                 }
@@ -370,8 +405,8 @@ client.on('interactionCreate', async interaction => {
                 'btn_dgko_add', 'btn_not_add', 'btn_soz_add', 'btn_lansman_add', 
                 'btn_tescil_baslat', 'btn_proje_add', 'btn_scout_add', 
                 'btn_legal_create', 'btn_legal_sign_artist', 'btn_legal_sign_patron', 
-                'btn_legal_step2_trigger', 'menu_fat_hizmet', 'menu_legal_type'
-            ].includes(customId) || customId?.startsWith('dgko_');
+                'btn_legal_step2_trigger', 'menu_fat_hizmet', 'menu_legal_type', 'modal_memo_send'
+            ].includes(customId) || customId?.startsWith('dgko_') || customId === 'modal_memo_send';
 
             if (!isModal) {
                  await interaction.deferUpdate().catch(e => console.log('Defer Safe Guard:', e.message));
@@ -384,6 +419,21 @@ client.on('interactionCreate', async interaction => {
             if (customId === 'app_studio') await renderStudio(interaction);
             if (customId === 'app_finance') await renderFinance(interaction);
             if (customId === 'nav_producer') await renderProducerPanel(interaction, true);
+
+            // [YENİ] MEMO SİSTEMİ - BAŞLANGIÇ
+            if (customId === 'btn_memo_start') {
+                if(user.id !== AYARLAR.PATRON_ID) return interaction.followUp({content:MSG.YETKI_YOK, ephemeral:true});
+                
+                const roleMenu = new StringSelectMenuBuilder()
+                    .setCustomId('menu_memo_role_select')
+                    .setPlaceholder('Hedef Kitleyi Seç')
+                    .addOptions([
+                        { label: 'Tüm Ekip (Recordooze Üyeleri)', value: AYARLAR.ROL_UYE, description: 'Herkese gider.', emoji: '👥' },
+                        { label: 'Yönetim Ekibi', value: AYARLAR.ROLLER_YONETIM[0], description: 'Sadece yetkililere.', emoji: '🔒' }
+                    ]);
+
+                await interaction.followUp({ content: '📢 **Dahili Yazışma (Memo):** Kime göndereceğiz?', components: [new ActionRowBuilder().addComponents(roleMenu)], ephemeral: true });
+            }
             
             if (customId === 'act_randevu') {
                 if (!checkPerms(interaction, 'UYE')) return interaction.followUp({content: MSG.YETKI_YOK, ephemeral:true});
@@ -686,11 +736,10 @@ client.on('interactionCreate', async interaction => {
                     await renderProjeList(interaction);
                 }
             }
-            // [YENİ] PROJE SİLME İŞLEVİ (MENÜ SEÇİMİ)
             if (customId === 'menu_proje_delete') {
-                await Proje.findByIdAndDelete(val); // Seçilen ID'yi veritabanından siler
+                await Proje.findByIdAndDelete(val); 
                 await interaction.followUp({content: '✅ Proje kalıcı olarak silindi.', ephemeral: true});
-                await renderProjeList(interaction); // Listeyi yeniler
+                await renderProjeList(interaction); 
             }
 
             if (customId === 'menu_scout_select') {
@@ -728,6 +777,18 @@ client.on('interactionCreate', async interaction => {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inp_tel').setLabel("Telefon").setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inp_email').setLabel("E-Posta").setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('inp_tarih').setLabel("Tarih").setValue(moment().utcOffset(3).format('DD.MM.YYYY')).setStyle(TextInputStyle.Short))
+                );
+                await interaction.showModal(modal);
+            }
+
+            // [YENİ] MEMO SİSTEMİ - ROL SEÇİLDİ (Menü)
+            if (customId === 'menu_memo_role_select') {
+                appCache.set(`memo_target_${user.id}`, val);
+                const modal = new ModalBuilder().setCustomId('modal_memo_send').setTitle('Internal Memorandum');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('memo_konu').setLabel("KONU").setStyle(TextInputStyle.Short).setPlaceholder("Örn: YILBAŞI YEMEĞİ")),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('memo_icerik').setLabel("MESAJ İÇERİĞİ").setStyle(TextInputStyle.Paragraph).setPlaceholder("Detayları buraya gir...")),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('memo_meta').setLabel("TARİH / YER / NOT").setStyle(TextInputStyle.Short).setPlaceholder("Örn: 25.12.2025 - Mirror Restaurant"))
                 );
                 await interaction.showModal(modal);
             }
@@ -836,6 +897,51 @@ client.on('interactionCreate', async interaction => {
                     await interaction.message.edit({components: []}); 
                 }
             }
+
+            // [YENİ] MEMO SİSTEMİ - GÖNDERİM İŞLEMİ (Modal Submit)
+            if (customId === 'modal_memo_send') {
+                await interaction.deferReply({ ephemeral: true });
+                
+                const targetRoleId = appCache.get(`memo_target_${user.id}`);
+                const konu = interaction.fields.getTextInputValue('memo_konu');
+                const icerik = interaction.fields.getTextInputValue('memo_icerik');
+                const meta = interaction.fields.getTextInputValue('memo_meta');
+
+                // Hedef Rolü Bul
+                const role = interaction.guild.roles.cache.get(targetRoleId);
+                if (!role) return interaction.editReply('⚠️ Hata: Seçilen rol sunucuda bulunamadı.');
+
+                // Tasarım (Black Card / Dark Theme)
+                const embed = new EmbedBuilder()
+                    .setColor('#000000') // Simsiyah
+                    .setAuthor({ name: 'RECORDOOZE INTERNAL DISPATCH', iconURL: AYARLAR.DOOZE_ICON })
+                    .setTitle(`⬛ ${konu.toUpperCase()} ⬛`)
+                    .setDescription(`**TO:** ${role.name}\n**FROM:** Executive Board\n**SECURITY:** Internal Use Only\n──────────────────────────────\n\n${icerik}\n\n──────────────────────────────`)
+                    .addFields({ name: '📎 DETAYLAR', value: meta })
+                    .setFooter({ text: `CONFIDENTIAL // ${moment().utcOffset(3).format('DD.MM.YYYY HH:mm')} // DOOZE OS` })
+                    .setThumbnail('https://i.imgur.com/w4bPuDL.png'); 
+
+                let sent = 0;
+                let failed = 0;
+                
+                // Roldeki üyeleri taze çek
+                await interaction.guild.members.fetch(); 
+                const members = role.members;
+
+                if (members.size === 0) return interaction.editReply('⚠️ Bu rolde kimse yok.');
+
+                for (const [id, member] of members) {
+                    if (member.user.bot) continue; 
+                    try {
+                        await member.send({ content: `🔔 **Recordooze Bildirimi:**`, embeds: [embed] });
+                        sent++;
+                    } catch (e) {
+                        failed++; 
+                    }
+                }
+
+                await interaction.editReply(`✅ **İşlem Tamamlandı.**\n📨 Gönderilen: ${sent}\n🚫 Ulaşılamayan (DM Kapalı): ${failed}\n👥 Hedef Kitle: ${role.name}`);
+            }
         }
     } catch (err) { console.log(`HATA: ${err.message}`); }
 });
@@ -887,8 +993,11 @@ async function renderScoutList(i) {
 }
 async function renderProducerPanel(i, upd=false) {
     const e = new EmbedBuilder().setTitle('🎩 YAPIMCI OFİSİ').setDescription('**Gizli Yönetim Paneli**\n\nBu alan sadece üst düzey yetkililer içindir.').setColor(RENK.SIYAH).setThumbnail('https://i.imgur.com/w4bPuDL.png');
+    
+    // [YENİ]: Memo butonu eklendi
     const r1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_legal_create').setLabel('Sözleşme Oluştur').setStyle(1).setEmoji('🖋️'),
+        new ButtonBuilder().setCustomId('btn_memo_start').setLabel('Toplu Memo').setStyle(1).setEmoji('📢'),
         new ButtonBuilder().setCustomId('admin_stats').setLabel('İstatistik').setStyle(2)
     );
     const r2 = new ActionRowBuilder().addComponents(
